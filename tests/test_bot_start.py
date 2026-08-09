@@ -113,5 +113,29 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertEqual(n, 5)  # 6 geçerli seed kodundan gerçek en-iyi-5 çekildi
 
 
+# --- APScheduler timezone fix (pytz) ---------------------------------------
+    def test_scheduler_accepts_pytz_timezone(self):
+        """Scheduler, pytz timezone objesiyle hata vermeden başlamalı."""
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys;os.environ['TELEGRAM_BOT_TOKEN']=''\n"
+            "sys.path.insert(0,'@R@')\n"
+            "import pytz\n"
+            "from apscheduler.schedulers.background import BackgroundScheduler\n"
+            "s=BackgroundScheduler(timezone=pytz.timezone('Europe/Istanbul'))\n"
+            "s.add_job(lambda:None,'interval',minutes=30)\n"
+            "s.start()\n"
+            "print('SCHED tz=%s jobs=%d' % (s.timezone, len(s.get_jobs())))\n"
+            "s.shutdown(wait=False)\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env,
+                           capture_output=True, text=True)
+        blob = p.stdout + p.stderr
+        self.assertIn("SCHED tz=Europe/Istanbul jobs=1", blob)
+        self.assertNotIn("Only timezones", blob)
+
+
 if __name__ == "__main__":
     unittest.main()

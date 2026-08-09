@@ -30,6 +30,7 @@ from typing import Optional
 
 import pandas as pd
 import pandas_ta as ta
+import pytz
 import yfinance as yf
 from flask import Flask, jsonify
 
@@ -626,7 +627,9 @@ def start_bot():
 
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
-        SCHEDULER = BackgroundScheduler()
+        # APScheduler 3.x yalnızca pytz timezone objelerini kabul eder
+        # (strings desteklenmez) -> Europe/Istanbul açıkça pytz ile verilir.
+        SCHEDULER = BackgroundScheduler(timezone=pytz.timezone("Europe/Istanbul"))
         SCHEDULER.add_job(auto_scan_job, "interval", minutes=AUTO_SCAN_INTERVAL_MIN)
         SCHEDULER.start()
     except Exception as e:  # pragma: no cover
