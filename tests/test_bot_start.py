@@ -112,6 +112,38 @@ class TestGunicornBotStart(unittest.TestCase):
         n = int(p.stdout.split("SCAN n=")[1].split()[0])
         self.assertEqual(n, 5)  # 6 geçerli seed kodundan gerçek en-iyi-5 çekildi
 
+    def test_scan_top5_in_memory_cache(self):
+        """Tarama sonucu 10 dk TTL'li cache'lenir; 2. çağrı indirme YAPMAZ."""
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys;os.environ['TELEGRAM_BOT_TOKEN']=''\n"
+            "sys.path.insert(0,'@ROOT@')\nimport numpy as np,pandas as pd\nimport main as m\n"
+            "def frame(s):\n"
+            "  rng=np.random.default_rng(s); n=90\n"
+            "  c=np.linspace(100.,99.,n)+rng.normal(0,0.35,n); c[-1]+=0.8\n"
+            "  hi=c*1.002; lo=c*0.998\n"
+            "  v=np.array(rng.integers(1_000_000,3_000_000,n),dtype=float); v[-1]=v[-10:-1].mean()*2.0\n"
+            "  idx=pd.date_range(end=pd.Timestamp.today(), periods=n)\n"
+            "  return pd.DataFrame({'Open':c,'High':hi,'Low':lo,'Close':c,'Volume':v}, index=idx)\n"
+            "syms=m.get_bist_tickers()[:6]\n"
+            "hits=[0]\n"
+            "def dl(s,**k):\n"
+            "  hits[0]+=1; return pd.concat({sym:frame(i) for i,sym in enumerate(syms)},axis=1)\n"
+            "m.yf.download=dl\n"
+            "r1=m.scan_top_5_stocks(5); r2=m.scan_top_5_stocks(5)\n"
+            "same=[x['symbol'] for x in r1]==[x['symbol'] for x in r2]\n"
+            "print('CACHE first=%d second=%d downloads=%d same=%s' % (len(r1),len(r2),hits[0],same))\n"
+            "m._SCAN_CACHE_TS=0; m.scan_top_5_stocks(5)\n"
+            "print('CACHE2 after_expiry_downloads=%d' % hits[0])\n"
+        ).replace("@ROOT@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env,
+                           capture_output=True, text=True)
+        blob = p.stdout + p.stderr
+        self.assertIn("CACHE first=5 second=5 downloads=1 same=True", blob)
+        self.assertIn("CACHE2 after_expiry_downloads=2", blob)  # TTL dolunca yeniden indirir
+
 
 # --- APScheduler timezone fix (pytz) ---------------------------------------
     def test_scheduler_accepts_pytz_timezone(self):

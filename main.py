@@ -25,6 +25,7 @@ Uygulama TELEGRAM_BOT_TOKEN yoksa yalnızca web sunucusu olarak açılır
 
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -52,19 +53,19 @@ BIST_TICKERS_SEED = [
     # Banka & Finans
     "AKBNK.IS", "ALBRK.IS", "GARAN.IS", "HALKB.IS", "ICBCR.IS", "ISKUR.IS",
     "ISBIR.IS", "ISFIN.IS", "ISATY.IS", "JANTS.IS", "KLNMA.IS", "SKBNK.IS",
-    "TSKB.IS", "TUKAS.IS", "VAKFN.IS", "VAKBN.IS", "YKBNK.IS", "QNBFB.IS",
+    "TSKB.IS", "TUKAS.IS", "VAKFN.IS", "VAKBN.IS", "YKBNK.IS", 
     "AEFES.IS", "AKSA.IS", "AKSEN.IS", "AGIDA.IS", "AKSUE.IS",
     # Holding & Yatırım
     "AGHOL.IS", "ALARK.IS", "AVHOL.IS", "BAGFS.IS", "CCOLA.IS", "CIMSA.IS",
-    "DOHOL.IS", "ECZYT.IS", "EKOYO.IS", "ENKAI.IS", "FROTO.IS", "GOLTS.IS",
-    "GOZDE.IS", "GSDHO.IS", "IBAY.IS", "ISYHO.IS", "KCHOL.IS", "METUR.IS",
-    "NTHOL.IS", "OYAKC.IS", "SAHOL.IS", "SISE.IS", "TMSF.IS", "TRCAS.IS",
+    "DOHOL.IS", "ECZYT.IS", "ENKAI.IS", "FROTO.IS", "GOLTS.IS",
+    "GOZDE.IS", "GSDHO.IS", "IBAY.IS", "ISYHO.IS", "KCHOL.IS", 
+    "NTHOL.IS", "OYAKC.IS", "SAHOL.IS", "SISE.IS", "TRCAS.IS",
     "TSPOR.IS", "TTRAK.IS", "YATAS.IS", "ZOREN.IS",
     # Gıda & İçecek
     "ARCLK.IS", "BANVT.IS", "BFREN.IS", "BIMAS.IS", "CANTE.IS", "DANIS.IS",
     "ERSU.IS", "ETIY.IS", "GENTS.IS", "IEYHO.IS", "IZFAS.IS", "KERVT.IS",
     "KNYA.IS", "KRSAN.IS", "KUTPO.IS", "MNDRS.IS", "PENGD.IS", "PINSU.IS",
-    "SELGD.IS", "TATGD.IS", "TBORG.IS", "TKURU.IS", "ULKER.IS", "VANET.IS",
+    "SELGD.IS", "TATGD.IS", "TBORG.IS", "TKURU.IS", "ULKER.IS", 
     "YAYLA.IS", "YYLAP.IS",
     # Petrokimya & Enerji
     "ALCAR.IS", "ALKIM.IS", "AYGAZ.IS", "BATAS.IS", "BRISA.IS", "DMSAS.IS",
@@ -73,14 +74,14 @@ BIST_TICKERS_SEED = [
     "ODAS.IS", "ORGE.IS", "PAPIL.IS", "PETKM.IS", "SAYAS.IS", "SODSN.IS",
     "TATEN.IS", "TAVHL.IS", "TERA.IS", "TUPRS.IS", "ZOREN.IS",
     # Savunma & Otomotiv & Teknoloji
-    "ARCLK.IS", "ASELS.IS", "BERA.IS", "BJKAS.IS", "BMEKS.IS", "BOSSA.IS",
+    "ARCLK.IS", "ASELS.IS", "BERA.IS", "BJKAS.IS", "BOSSA.IS",
     "BRKSN.IS", "BURSA.IS", "CLEBI.IS", "COSMO.IS", "DOAS.IS", "DOKTA.IS",
     "EAGB.IS", "ECZYT.IS", "ENSA.IS", "FMIZP.IS", "FROTO.IS", "GESAN.IS",
     "GRNYO.IS", "HCAY.IS", "HEKTS.IS", "HUBVC.IS", "KARSN.IS", "KONTR.IS",
     "KCHOL.IS", "MAVI.IS", "MGROS.IS", "OTKAR.IS", "PGSUS.IS", "SDTTR.IS",
     "TAVHL.IS", "TOASO.IS", "TTKOM.IS", "TUKAS.IS", "VESTL.IS",
     # İlaç & Sağlık
-    "AEDFS.IS", "ASYAB.IS", "BIOEN.IS", "ECILC.IS", "FADE.IS", "GENIL.IS",
+    "AEDFS.IS", "BIOEN.IS", "ECILC.IS", "FADE.IS", "GENIL.IS",
     "GUBRF.IS", "IEYHO.IS", "INTEM.IS", "ISFIN.IS", "MEDTR.IS", "MEPET.IS",
     "NUGYO.IS", "OYLUM.IS", "RTAYB.IS", "SELGD.IS", "SMRTG.IS", "TMPOL.IS",
     "TRILC.IS",
@@ -91,8 +92,8 @@ BIST_TICKERS_SEED = [
     "PEKGY.IS", "RGYAS.IS", "SARKY.IS", "SNGYO.IS", "TSGYO.IS", "TUPRS.IS",
     "VKGYO.IS", "YKBNK.IS",
     # Diğer / Tek halka
-    "AFYON.IS", "ANACM.IS", "ANSA.IS", "APYUN.IS", "ARASE.IS", "ARENA.IS",
-    "ARZUM.IS", "ASUZU.IS", "ATAAY.IS", "ATIC.IS", "AUTKER.IS", "AVOD.IS",
+    "AFYON.IS", "ANSA.IS", "APYUN.IS", "ARASE.IS", "ARENA.IS",
+    "ARZUM.IS", "ASUZU.IS", "ATAAY.IS", "AUTKER.IS", "AVOD.IS",
     "AYCES.IS", "AYEM.IS", "BAGFS.IS", "BAKAB.IS", "BASGZ.IS", "BLCYT.IS",
     "BORSK.IS", "BTCIM.IS", "BUCIM.IS", "BURVA.IS", "CANTE.IS", "CASA.IS",
     "CEDBN.IS", "CEMTS.IS", "CELHA.IS", "CEMAS.IS", "CUSAN.IS", "DAGI.IS",
@@ -100,11 +101,11 @@ BIST_TICKERS_SEED = [
     "DOKTA.IS", "DURDO.IS", "DYOBY.IS", "ECZYT.IS", "EGEPO.IS", "EKIZ.IS",
     "ETYAT.IS", "EUREN.IS", "EUYO.IS", "FORTE.IS", "FRIGO.IS", "GARFA.IS",
     "GEDZA.IS", "GLYHO.IS", "GOLDS.IS", "GOODY.IS", "GRAFT.IS", "GRNYO.IS",
-    "HDFGS.IS", "HLEGZ.IS", "HMSO.IS", "INFO.IS", "ISKPL.IS", "ISMEN.IS",
-    "KAYSE.IS", "KCHOL.IS", "KLMSN.IS", "LIDER.IS", "LOGOS.IS", "LUKSK.IS",
-    "MAGEN.IS", "MAKIM.IS", "MEMSA.IS", "MENSA.IS", "MUDUR.IS", "NUGYO.IS",
+    "HDFGS.IS", "HMSO.IS", "INFO.IS", "ISKPL.IS", "ISMEN.IS",
+    "KAYSE.IS", "KCHOL.IS", "KLMSN.IS", "LIDER.IS", "LUKSK.IS",
+    "MAGEN.IS", "MAKIM.IS", "MEMSA.IS", "NUGYO.IS",
     "OBAMS.IS", "OKANT.IS", "ORCAY.IS", "ORGSZ.IS", "OSMEN.IS", "OZSUB.IS",
-    "PARSN.IS", "PASEU.IS", "PATEK.IS", "POLHO.IS", "PRZMA.IS", "RBNK.IS",
+    "PARSN.IS", "PASEU.IS", "PATEK.IS", "POLHO.IS", "PRZMA.IS", 
     "REEDR.IS", "RNFAC.IS", "RPOWER.IS", "RSYO.IS", "SAFKR.IS", "SARKY.IS",
     "SBAG.IS", "SEKUR.IS", "SEYKM.IS", "SILVR.IS", "SKTAS.IS", "SUMAS.IS",
     "TAVHL.IS", "TCELL.IS", "TEKTU.IS", "THYAO.IS", "TKFEN.IS", "TKNSA.IS",
@@ -115,7 +116,7 @@ BIST_TICKERS_SEED = [
     "KRGYO.IS", "LGKYO.IS", "MRGYO.IS", "NRGYO.IS", "NTRYO.IS", "OZKGY.IS",
     "PAGYO.IS", "RGYAS.IS", "YKGYO.IS", "YGGYO.IS", "ZMKGY.IS",
     # Makine, İnşaat & Metal
-    "ALMAD.IS", "ANIET.IS", "ARBUL.IS", "ASUZU.IS", "BASTK.IS", "BOLUC.IS",
+    "ALMAD.IS", "ANIET.IS", "ASUZU.IS", "BASTK.IS", "BOLUC.IS",
     "CLEBI.IS", "CONKA.IS", "DCTRK.IS", "DENGE.IS", "DFHOL.IS", "DIRIT.IS",
     "DMRGD.IS", "EKINC.IS", "EMNIS.IS", "ERBOS.IS", "EREGL.IS", "ESEMS.IS",
     "FENER.IS", "GEREL.IS", "GOKNR.IS", "GOLTS.IS", "HILAS.IS", "IEYHO.IS",
@@ -126,20 +127,20 @@ BIST_TICKERS_SEED = [
     "TKNSA.IS", "TRKCM.IS", "TUKAS.IS", "VAKKO.IS", "VKGYO.IS", "YAPRK.IS",
     "YASAS.IS", "ZOREN.IS", "DOGUB.IS", "TUKAS.IS", "KCHOL.IS", "TUPRS.IS",
     # Diğer şirketler
-    "ABDIT.IS", "ACIPD.IS", "ADESE.IS", "AFYON.IS", "ANACM.IS",
+    "ACIPD.IS", "ADESE.IS", "AFYON.IS", 
     "ASELS.IS", "ATSYH.IS", "AVTUR.IS", "AYEN.IS", "BALAT.IS", "BANVT.IS",
-    "BASGZ.IS", "BATM.IS", "BEPAS.IS", "BFREN.IS", "BKM.IS", "BRMEN.IS",
+    "BASGZ.IS", "BATM.IS", "BEPAS.IS", "BFREN.IS", "BRMEN.IS",
     "BSOKE.IS", "BTCIM.IS", "CMBTN.IS", "COSMO.IS", "CVKMD.IS", "DURKN.IS",
-    "DYKHO.IS", "EGPRO.IS", "EKIZ.IS", "EKOYO.IS", "ENRUT.IS", "ERSU.IS",
+    "DYKHO.IS", "EGPRO.IS", "EKIZ.IS", "ENRUT.IS", "ERSU.IS",
     "ESCAR.IS", "ESCOM.IS", "ETYAT.IS", "EUREN.IS", "FADE.IS", "FMIZP.IS",
     "FORTE.IS", "GEDZA.IS", "GEREL.IS", "GLYHO.IS", "GOLDS.IS", "GOODY.IS",
-    "GRTRK.IS", "GSDDE.IS", "GSTKM.IS", "HECEB.IS", "HLEGZ.IS", "INFO.IS",
+    "GRTRK.IS", "GSDDE.IS", "GSTKM.IS", "HECEB.IS", "INFO.IS",
     "ISKUR.IS", "ISMEN.IS", "KAREL.IS", "KARTN.IS", "KAYSER.IS", "KONYA.IS",
-    "KORDS.IS", "KRTM.IS", "LIDFA.IS", "LOGOS.IS", "MAKIM.IS", "MEGMT.IS",
+    "KORDS.IS", "KRTM.IS", "LIDFA.IS", "MAKIM.IS", "MEGMT.IS",
     "MERCN.IS", "METAL.IS", "METRO.IS", "MIKRS.IS", "MKART.IS", "MRDIN.IS",
     "NETAS.IS", "NUGYO.IS", "OBAMS.IS", "ORGE.IS", "OSMEN.IS", "OTKAR.IS",
     "PARSN.IS", "PATEK.IS", "PKART.IS", "PLTUR.IS", "POLHO.IS", "PRKAB.IS",
-    "PRZMA.IS", "QNBFB.IS", "RBNK.IS", "REEDR.IS", "RNFAC.IS", "RPOWER.IS",
+    "PRZMA.IS", "REEDR.IS", "RNFAC.IS", "RPOWER.IS",
     "RSYO.IS", "SAFKR.IS", "SARKY.IS", "SBAG.IS", "SEKUR.IS", "SELGD.IS",
     "SERVE.IS", "SMRTG.IS", "SUNTK.IS", "SUWEN.IS", "TACTR.IS", "TATEN.IS",
     "TBORG.IS", "TEKTU.IS", "TFTCB.IS", "TKURU.IS", "TUREX.IS", "UEEC.IS",
@@ -357,14 +358,31 @@ def score_stock(a: dict) -> float:
     return round(score, 2)
 
 
+# --- In-memory scan cache (10 dk) -------------------------------------------
+# Aynı TTL aralığında yapılan tüm tarama istekleri yeniden indirme YAPMAZ.
+SCAN_CACHE_TTL = 600          # tarama sonucunun ömrü (saniye)
+_SCAN_CACHE = None            # son tarama sonucu (dict listesi)
+_SCAN_CACHE_TS = 0.0          # son taramanın zaman damgası
+_SCAN_CACHE_TOP_N = None      # cache'lenen top_n (farklı N için cache geçersiz)
+
+
 def scan_top_5_stocks(top_n: int = 5) -> list:
     """BIST Tüm evrenini tarar, skorlar ve ilk N hisseyi döndürür.
 
     Performans: tüm semboller TEK yf.download çağrısıyla toplu çekilir
     (download_batch), ardından her hisse için göstergeler ThreadPoolExecutor ile
-    paralel hesaplanır. 500+ hisse tek tek indirmek yerine birkaç saniyede biter —
-    120 sn'lik Gunicorn timeout'unun altında kalır.
+    paralel hesaplanır. 500+ hisse tek tek indirmek yerine birkaç saniyede biter.
+
+    Sonuç; SCAN_CACHE_TTL (10 dk) ömründe bellekte saklanır => aynı TTL aralığında
+    /top5, /api/scan, /ototarma ve web istekleri SIFIR indirme yapar, yalnızca
+    kayıtlı kopyayı döndürür. Bu; Render'daki CPU/RAM yükünü ve CPU limitini düşürür.
     """
+    global _SCAN_CACHE, _SCAN_CACHE_TS, _SCAN_CACHE_TOP_N
+    now = time.time()
+    if _SCAN_CACHE is not None and _SCAN_CACHE_TOP_N == top_n \
+            and (now - _SCAN_CACHE_TS) < SCAN_CACHE_TTL:
+        return [dict(a) for a in _SCAN_CACHE]  # çağıran mutasyondan korunmuş kopya
+
     tickers = get_bist_tickers()
     batch = download_batch(tickers)
     if batch is None:
@@ -372,7 +390,7 @@ def scan_top_5_stocks(top_n: int = 5) -> list:
 
     results = []
     futures = {}
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:  # Render shared-CPU'ya uyumlu
         for sym in tickers:
             if isinstance(batch.columns, pd.MultiIndex):
                 sub = batch[sym] if sym in batch.columns.get_level_values(0) else None
@@ -392,7 +410,11 @@ def scan_top_5_stocks(top_n: int = 5) -> list:
             results.append(a)
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    return results[:top_n]
+    top = results[:top_n]
+    _SCAN_CACHE = [dict(a) for a in top]
+    _SCAN_CACHE_TS = now
+    _SCAN_CACHE_TOP_N = top_n
+    return [dict(a) for a in _SCAN_CACHE]
 
 
 # =============================================================================

@@ -17,7 +17,7 @@ kriterlerini karşılayan hisseleri skorlayıp **Top 5** listesini hem web API h
 |------|-------|
 | **BIST Tüm Evreni** | BIST 30/100 ile sınırlı kalmayıp **~384+ seed hisse** (`main.py` → `BIST_TICKERS_SEED`) içeren geniş bir evreni tarar. En güncel tam liste için `BIST_TICKERS_FILE` ortam değişkeniyle bir metin dosyası da belirtilebilir (bir satır bir kod). |
 | **Dinamik Sorgu (`/sorgu`)** | Borsa İstanbul'da işlem gören **herhangi bir** hisse kodu canlı analiz edilir — kodun seed evreninde olması gerekmez (`/sorgu GOZDE`). |
-| **Performans Optimizasyonu** | `yf.download(BIST_TICKERS, ..., group_by="ticker")` ile **tek paket (batch) indirme** + `concurrent.futures.ThreadPoolExecutor` ile **paralel** gösterge hesabı. 500'e yakın hisse, 120 sn'lik Render/Gunicorn timeout'una takılmadan saniyeler içinde taranır. |
+| **Performans Optimizasyonu** | `yf.download(BIST_TICKERS, ..., group_by="ticker")` ile **tek paket (batch) indirme** + `concurrent.futures.ThreadPoolExecutor` (max_workers=4) ile **paralel** gösterge hesabı. 500'e yakın hisse, 120 sn'lik Render/Gunicorn timeout'una takılmadan saniyeler içinde taranır. Ayrıca sonuç **10 dakika bellekte cache'lenir** (`SCAN_CACHE_TTL=600`) — aynı TTL aralığındaki `/top5`, `/api/scan` ve `/ototarma` istekleri **yeniden indirme yapmaz**, bu da Render'da CPU/RAM yükünü ve CPU limitini düşürür. |
 | **Teknik Göstergeler** | RSI(14) momentum bandı (55–72), MACD(12,26,9) sinyalleri, EMA20/50 trendi, 20 günlük destek/direnç, Klasik Pivot seviyeleri (P, R1–R3, S1–S3) ve Hacim Surge %. |
 | **Portföy & Risk Stratejisi** | 100.000 TL sermaye, **4 eşit pozisyon** (25.000 TL/hisse), **+%6 hedef** ve **−%3 sert stop-loss** planı (R/R ≈ 2:1). |
 | **Otomatik Tarama & Zamanlayıcı** | `APScheduler` + `pytz.timezone("Europe/Istanbul")` ile periyodik Top 5 taraması ve bildirim (`/ototarma ac\|kapat`, varsayılan 30 dk). |
@@ -39,7 +39,8 @@ kriterlerini karşılayan hisseleri skorlayıp **Top 5** listesini hem web API h
         │   • download_batch()   : TEK çağrıda ~384+ hissenin OHLCV'si     │
         │   • _compute_analysis(): RSI · MACD · EMA20/50 · pivotlar · surge │
         │   • score_stock()      : momentum puanı (0–100+)                 │
-        │   • scan_top_5_stocks(): ThreadPoolExecutor (8) paralel hesap     │
+        │   • scan_top_5_stocks(): ThreadPoolExecutor (max_workers=4)      │
+        │   • 10 dk in-memory cache: SCAN_CACHE_TTL=600 → tekrar indirme yok│
         └──────────────┬───────────────────────────────────────────────────┘
                        │
           ┌────────────┴─────────────┬───────────────────────────────┐
@@ -180,7 +181,7 @@ cd bist_telegram_bot
 env -u PYTHONPATH .venv312/Scripts/python.exe -m unittest tests.test_bot_start -v
 ```
 
-Beklenen çıktı: `Ran 7 tests ... OK`, çıkış kodu `0`.
+Beklenen çıktı: `Ran 8 tests ... OK`, çıkış kodu `0`.
 
 ---
 
