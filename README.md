@@ -64,7 +64,7 @@ http://localhost:5000/api/stock/GOZDE.IS
 1. Repo'yu Render'a bağlayın → **New Web Service**.
 2. **Start Command**:
    ```bash
-   gunicorn main:app --timeout 120
+   gunicorn main:app --timeout 120 --workers 1
    ```
 3. Ortam değişkenlerini **Environment**'a ekleyin: `TELEGRAM_BOT_TOKEN`.
    Port'u Render otomatik `PORT` ile verir.
@@ -75,7 +75,7 @@ http://localhost:5000/api/stock/GOZDE.IS
 ```bash
 heroku create
 heroku config:set TELEGRAM_BOT_TOKEN=XXXX
-echo "web: gunicorn main:app --timeout 120" > Procfile
+echo "web: gunicorn main:app --timeout 120 --workers 1" > Procfile
 git push heroku main
 ```
 
@@ -83,7 +83,7 @@ git push heroku main
 ```bash
 pip install -r requirements.txt
 export TELEGRAM_BOT_TOKEN=XXXX
-gunicorn main:app --timeout 120 --bind 0.0.0.0:5000
+gunicorn main:app --timeout 120 --workers 1 --bind 0.0.0.0:5000
 ```
 Arka planda kalması için `systemd` birimi ekleyin.
 

@@ -9,7 +9,9 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app --timeout 120
+    # --workers 1 ZORUNLU: her worker, modül-seviyesi bot thread'ini kendi
+    # process'inde başlatır => birden çok polling = Telegram "Conflict".
+    startCommand: gunicorn main:app --timeout 120 --workers 1
     healthCheckPath: /
     envVars:
       # sync:false => değer Render pano/bridge arayüzünde GİZLİ girilir.

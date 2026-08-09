@@ -266,6 +266,7 @@ def api_stock(symbol: str):
 BOT = None            # global bot instance (token varsa)
 AUTO_SUBSCRIBERS = {}  # chat_id -> bool (ototarma açık/kapalı)
 SCHEDULER = None
+_BOT_STARTED = False   # idempotency: bot thread'i yalnızca bir kez başlat
 
 
 # --- HTML biçimlendirme yardımcıları ----------------------------------------
@@ -284,11 +285,14 @@ def fmt_stock_line(a: dict, show_score=False) -> str:
 
 
 def start_bot():
-    """Telegram botunu bir daemon thread üzerinde başlatır."""
-    global BOT, SCHEDULER
+    """Telegram botunu bir daemon thread üzerinde başlatır (idempotent)."""
+    global BOT, SCHEDULER, _BOT_STARTED
+    if _BOT_STARTED:
+        return None  # zaten başlatıldı (çift gunicorn importu / reloader koruması)
     if not TELEGRAM_BOT_TOKEN:
         print("[i] TELEGRAM_BOT_TOKEN tanımlı değil — yalnızca web sunucusu çalışacak.")
         return None
+    _BOT_STARTED = True
 
     from telegram.ext import Updater, CommandHandler, Filters, MessageHandler
 
@@ -461,15 +465,42 @@ def start_bot():
 # =============================================================================
 # 6) GİRİŞ NOKTASI
 # =============================================================================
-def main():
-    # Telegram botu varsa başlat (daemon thread üzerinde);
-    # yoksa sistem yalnızca web sunucusu olarak ayakta kalır.
-    start_bot()
+def maybe_start_bot_thread():
+    """TELEGRAM_BOT_TOKEN varsa bot thread'ini modül yüklenince başlatır.
 
+    Gunicorn (`gunicorn main:app`) modülü import ettiğinde `if __name__ ==
+    "__main__"` çalışmaz; bu yüzden web sunucusuyla birlikte botun da ayağa
+    kalkması için çağrı modül seviyesinde yapılır. Idempotenttir: aynı process
+    içinde yalnızca bir kez başlatılır (gunicorn reloader / tekrar import).
+    """
+    if not TELEGRAM_BOT_TOKEN:
+        print("[!] TELEGRAM_BOT_TOKEN is missing. Running in web-only mode.")
+        return False
+    thread = threading.Thread(target=start_bot, name="telegram-bot", daemon=True)
+    thread.start()
+    print("[i] Telegram bot thread started in background.")
+    return True
+
+
+def main():
+    # Bot modül seviyesinde (şu dosyanın sonundaki çağrı ile) başladığından
+    # burada tekrar başlatılmaz — yalnızca web sunucusu çalıştırılır.
     host = os.getenv("HOST", "0.0.0.0")
     print(f"[i] Flask sunucusu http://{host}:{PORT} üzerinde başlatılıyor...")
     # Debug/PORT ortam ayarlarına göre çalıştır.
     app.run(host=host, port=PORT, debug=os.getenv("FLASK_DEBUG", "0") == "1")
+
+
+# --- Bot thread'ini OTOMATİK başlat: Gunicorn (gunicorn main:app) modülü
+# import ettiğinde bu blok çalışır; `if __name__ == "__main__"` çalışmaz.
+# Bu, Render'da web + bot'un aynı anda ayağa kalkmasını sağlar.
+if TELEGRAM_BOT_TOKEN:
+    import threading
+    bot_thread = threading.Thread(target=start_bot, name="telegram-bot", daemon=True)
+    bot_thread.start()
+    print("[i] Telegram bot thread started in background.")
+else:
+    print("[!] TELEGRAM_BOT_TOKEN is missing. Running in web-only mode.")
 
 
 if __name__ == "__main__":
