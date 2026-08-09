@@ -1,0 +1,14 @@
+# Ortam / gizlilik — repoya asla commit etme
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.pyc
+.venv312/
+.venv/
+
+# Test/yan ürünler
+.pytest_cache/
+*.log
+.vs/

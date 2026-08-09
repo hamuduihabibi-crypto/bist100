@@ -1,0 +1,20 @@
+# python-telegram-bot 13.15, modern urllib3 (>=2) ile uyumlu DEĞİLDİR.
+# `urllib3.contrib.appengine` kaldırıldığı için urllib3<2 sürümü sabitlenir.
+urllib3<2
+six>=1.16
+
+# BIST Trading Bot — bağımlılıklar (Hermes 3.12 venv'de test edildi)
+Flask==3.0.3
+# python-telegram-bot 13.15, APScheduler'i TAM pinle ister (==3.6.3).
+# Ustune yazmak (3.11+) pip'i "Requirement already satisfied" degil, conflict'e
+# surukler. Bu nedenle APScheduler==3.6.3 ile hizalanir.
+python-telegram-bot==13.15
+APScheduler==3.6.3
+# APScheduler 3.6.3 bagimliidir: `pkg_resources` (setuptools'tan). Yeni
+# setuptools (>=81) pkg_resources'u kaldirdigi icin tasima yapan surumu sabitleriz.
+setuptools<81
+yfinance==1.5.2
+pandas==3.0.5
+pandas-ta==0.4.71b0
+gunicorn==22.0.0
+python-dotenv==1.0.1

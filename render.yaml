@@ -1,0 +1,23 @@
+# ---------------------------------------------------------------------------
+# Render Blueprint — bist-telegram-bot
+# Render.com'a "Blueprints" ile deploy etmek için (repo kökünde bu dosya).
+# https://render.com/docs/blueprint-spec
+# ---------------------------------------------------------------------------
+services:
+  - type: web
+    name: bist-telegram-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app --timeout 120
+    healthCheckPath: /
+    envVars:
+      # sync:false => değer Render pano/bridge arayüzünde GİZLİ girilir.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: FLASK_DEBUG
+        value: 0
