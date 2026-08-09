@@ -59,6 +59,58 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertIn("started=True", p.stdout)
         self.assertIn("thread=True", p.stdout)
 
+    # --- BIST Tüm evreni + toplu (batch) tarama ---------------------------------
+    def test_bist_universe(self):
+        """Seed evreni: hepsi .IS, benzersiz, en az 300 kod (BIST Tüm'e yakın)."""
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        env["TELEGRAM_BOT_TOKEN"] = ""  # bot başlatma; Render botuyla çakışma yok
+        code = (
+            "import os,sys;os.environ['TELEGRAM_BOT_TOKEN']=''\n"
+            "sys.path.insert(0,'@ROOT@')\nimport main as m\n"
+            "t=m.get_bist_tickers()\n"
+            "print('UNIVERSE n=%d is=%s uniq=%s' % (len(t),"
+            " all(c.endswith('.IS') for c in t), len(set(t))==len(t)))\n"
+        ).replace("@ROOT@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env,
+                           capture_output=True, text=True)
+        self.assertIn("n=", p.stdout)
+        self.assertIn("is=True uniq=True", p.stdout)
+        n = int(p.stdout.split("n=")[1].split()[0])
+        self.assertGreaterEqual(n, 300)
+
+    def test_scan_top5_mocked_batch(self):
+        """yf.download TEK batch çağrısına karşılık verir; tarama sıralı döner."""
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys;os.environ['TELEGRAM_BOT_TOKEN']=''\n"
+            "sys.path.insert(0,'@ROOT@')\nimport numpy as np, pandas as pd\nimport main as m\n"
+            "def frame(s):\n"
+            "  rng=np.random.default_rng(s); n=90\n"
+            "  close=np.linspace(100.,99.,n)+rng.normal(0,0.35,n)\n"
+            "  close[-30:]+=np.linspace(0.,2.5,30); close[-1]+=0.8\n"
+            "  hi=close*(1+np.abs(rng.normal(0,0.0025,n)))\n"
+            "  lo=close*(1-np.abs(rng.normal(0,0.0025,n)))\n"
+            "  vol=np.array(rng.integers(1_000_000,3_000_000,n),dtype=float)\n"
+            "  vol[-1]=vol[-10:-1].mean()*2.5\n"
+            "  idx=pd.date_range(end=pd.Timestamp.today(), periods=n)\n"
+            "  return pd.DataFrame({'Open':close,'High':hi,'Low':lo,'Close':close,'Volume':vol}, index=idx)\n"
+            "syms=['AAA.IS','BBB.IS','CCC.IS','DDD.IS','EEE.IS','FFF.IS']\n"
+            "m.yf.download=lambda s,**k: pd.concat({sym:frame(i) for i,sym in enumerate(syms)},axis=1)\n"
+            "top=m.scan_top_5_stocks(5)\n"
+            "sc=[t['score'] for t in top]\n"
+            "print('SCAN n=%d sorted=%s fields=%s' % (len(top),"
+            " sc==sorted(sc,reverse=True), all(all(k in t for k in ('score','target','stop','symbol')) for t in top)))\n"
+            "print('RESULT_SYMS:', [t['symbol'] for t in top])\n"
+        ).replace("@ROOT@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env,
+                           capture_output=True, text=True)
+        self.assertIn("SCAN n=", p.stdout)
+        self.assertIn("sorted=True fields=True", p.stdout)
+        self.assertLessEqual(int(p.stdout.split("SCAN n=")[1].split()[0]), 5)
+
 
 if __name__ == "__main__":
     unittest.main()

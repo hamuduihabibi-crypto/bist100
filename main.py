@@ -25,6 +25,7 @@ Uygulama TELEGRAM_BOT_TOKEN yoksa yalnızca web sunucusu olarak açılır
 
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import pandas as pd
@@ -42,15 +43,141 @@ except ImportError:  # .env desteği yoksa os.environ yeterlidir
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 PORT = int(os.getenv("PORT", "5000"))
 
-# --- Varsayılan BIST 100 tarama listesi -------------------------------------
-# (Yarışma öncesi güncel BIST 100 bileşenleriyle genişletilebilir.)
-BIST_TICKERS = [
-    "GOZDE.IS", "ODAS.IS", "RNPOL.IS", "MAVI.IS", "THYAO.IS", "GARAN.IS",
-    "TUPRS.IS", "EREGL.IS", "ASELS.IS", "SISE.IS", "AKBNK.IS", "FROTO.IS",
-    "BIMAS.IS", "KCHOL.IS", "SAHOL.IS", "PETKM.IS", "TCELL.IS", "SASA.IS",
-    "KOZAL.IS", "HEKTS.IS", "ULKER.IS", "TOASO.IS", "OTKAR.IS", "PGSUS.IS",
-    "SOKM.IS", "AKSA.IS", "BAGFS.IS", "ISGYO.IS", "EKGYO.IS", "SARKY.IS",
+# --- BIST Tüm tarama evreni ------------------------------------------------
+# ~500 BIST hissesi. Liste güncellenir; en güncel tam listeniz varsa
+# ortam değişkeniyle BIST_TICKERS_FILE=/yol/liste.txt belirtin
+# (her satır bir kod, ".IS" ekli ya da ekli değil). Varsayılan: aşağıdaki seed.
+BIST_TICKERS_SEED = [
+    # Banka & Finans
+    "AKBNK.IS", "ALBRK.IS", "GARAN.IS", "HALKB.IS", "ICBCR.IS", "ISKUR.IS",
+    "ISBIR.IS", "ISFIN.IS", "ISATY.IS", "JANTS.IS", "KLNMA.IS", "SKBNK.IS",
+    "TSKB.IS", "TUKAS.IS", "VAKFN.IS", "VAKBN.IS", "YKBNK.IS", "QNBFB.IS",
+    "AEFES.IS", "AKSA.IS", "AKSEN.IS", "AGIDA.IS", "AKSUE.IS",
+    # Holding & Yatırım
+    "AGHOL.IS", "ALARK.IS", "AVHOL.IS", "BAGFS.IS", "CCOLA.IS", "CIMSA.IS",
+    "DOHOL.IS", "ECZYT.IS", "EKOYO.IS", "ENKAI.IS", "FROTO.IS", "GOLTS.IS",
+    "GOZDE.IS", "GSDHO.IS", "IBAY.IS", "ISYHO.IS", "KCHOL.IS", "METUR.IS",
+    "NTHOL.IS", "OYAKC.IS", "SAHOL.IS", "SISE.IS", "TMSF.IS", "TRCAS.IS",
+    "TSPOR.IS", "TTRAK.IS", "YATAS.IS", "ZOREN.IS",
+    # Gıda & İçecek
+    "ARCLK.IS", "BANVT.IS", "BFREN.IS", "BIMAS.IS", "CANTE.IS", "DANIS.IS",
+    "ERSU.IS", "ETIY.IS", "GENTS.IS", "IEYHO.IS", "IZFAS.IS", "KERVT.IS",
+    "KNYA.IS", "KRSAN.IS", "KUTPO.IS", "MNDRS.IS", "PENGD.IS", "PINSU.IS",
+    "SELGD.IS", "TATGD.IS", "TBORG.IS", "TKURU.IS", "ULKER.IS", "VANET.IS",
+    "YAYLA.IS", "YYLAP.IS",
+    # Petrokimya & Enerji
+    "ALCAR.IS", "ALKIM.IS", "AYGAZ.IS", "BATAS.IS", "BRISA.IS", "DMSAS.IS",
+    "EGSER.IS", "EGEEN.IS", "ENERY.IS", "ENJSA.IS", "EREGL.IS", "GEDIZ.IS",
+    "IZENR.IS", "KARSN.IS", "KRTEK.IS", "MAKTK.IS", "MRSHL.IS", "NATEN.IS",
+    "ODAS.IS", "ORGE.IS", "PAPIL.IS", "PETKM.IS", "SAYAS.IS", "SODSN.IS",
+    "TATEN.IS", "TAVHL.IS", "TERA.IS", "TUPRS.IS", "ZOREN.IS",
+    # Savunma & Otomotiv & Teknoloji
+    "ARCLK.IS", "ASELS.IS", "BERA.IS", "BJKAS.IS", "BMEKS.IS", "BOSSA.IS",
+    "BRKSN.IS", "BURSA.IS", "CLEBI.IS", "COSMO.IS", "DOAS.IS", "DOKTA.IS",
+    "EAGB.IS", "ECZYT.IS", "ENSA.IS", "FMIZP.IS", "FROTO.IS", "GESAN.IS",
+    "GRNYO.IS", "HCAY.IS", "HEKTS.IS", "HUBVC.IS", "KARSN.IS", "KONTR.IS",
+    "KCHOL.IS", "MAVI.IS", "MGROS.IS", "OTKAR.IS", "PGSUS.IS", "SDTTR.IS",
+    "TAVHL.IS", "TOASO.IS", "TTKOM.IS", "TUKAS.IS", "VESTL.IS",
+    # İlaç & Sağlık
+    "AEDFS.IS", "ASYAB.IS", "BIOEN.IS", "ECILC.IS", "FADE.IS", "GENIL.IS",
+    "GUBRF.IS", "IEYHO.IS", "INTEM.IS", "ISFIN.IS", "MEDTR.IS", "MEPET.IS",
+    "NUGYO.IS", "OYLUM.IS", "RTAYB.IS", "SELGD.IS", "SMRTG.IS", "TMPOL.IS",
+    "TRILC.IS",
+    # Hizmet & Turizm & GYO
+    "AKENR.IS", "AKMGY.IS", "ALGYO.IS", "ATSYH.IS", "AVTUR.IS", "BRKGY.IS",
+    "DOHOL.IS", "EKGYO.IS", "EMKEL.IS", "HLGYO.IS", "ISGYO.IS", "KLKIM.IS",
+    "KONTY.IS", "MARTI.IS", "METRO.IS", "MIATK.IS", "MTRKS.IS", "NETAS.IS",
+    "PEKGY.IS", "RGYAS.IS", "SARKY.IS", "SNGYO.IS", "TSGYO.IS", "TUPRS.IS",
+    "VKGYO.IS", "YKBNK.IS",
+    # Diğer / Tek halka
+    "AFYON.IS", "ANACM.IS", "ANSA.IS", "APYUN.IS", "ARASE.IS", "ARENA.IS",
+    "ARZUM.IS", "ASUZU.IS", "ATAAY.IS", "ATIC.IS", "AUTKER.IS", "AVOD.IS",
+    "AYCES.IS", "AYEM.IS", "BAGFS.IS", "BAKAB.IS", "BASGZ.IS", "BLCYT.IS",
+    "BORSK.IS", "BTCIM.IS", "BUCIM.IS", "BURVA.IS", "CANTE.IS", "CASA.IS",
+    "CEDBN.IS", "CEMTS.IS", "CELHA.IS", "CEMAS.IS", "CUSAN.IS", "DAGI.IS",
+    "DERIM.IS", "DESA.IS", "DIRIT.IS", "DITAS.IS", "DOBUR.IS", "DOCO.IS",
+    "DOKTA.IS", "DURDO.IS", "DYOBY.IS", "ECZYT.IS", "EGEPO.IS", "EKIZ.IS",
+    "ETYAT.IS", "EUREN.IS", "EUYO.IS", "FORTE.IS", "FRIGO.IS", "GARFA.IS",
+    "GEDZA.IS", "GLYHO.IS", "GOLDS.IS", "GOODY.IS", "GRAFT.IS", "GRNYO.IS",
+    "HDFGS.IS", "HLEGZ.IS", "HMSO.IS", "INFO.IS", "ISKPL.IS", "ISMEN.IS",
+    "KAYSE.IS", "KCHOL.IS", "KLMSN.IS", "LIDER.IS", "LOGOS.IS", "LUKSK.IS",
+    "MAGEN.IS", "MAKIM.IS", "MEMSA.IS", "MENSA.IS", "MUDUR.IS", "NUGYO.IS",
+    "OBAMS.IS", "OKANT.IS", "ORCAY.IS", "ORGSZ.IS", "OSMEN.IS", "OZSUB.IS",
+    "PARSN.IS", "PASEU.IS", "PATEK.IS", "POLHO.IS", "PRZMA.IS", "RBNK.IS",
+    "REEDR.IS", "RNFAC.IS", "RPOWER.IS", "RSYO.IS", "SAFKR.IS", "SARKY.IS",
+    "SBAG.IS", "SEKUR.IS", "SEYKM.IS", "SILVR.IS", "SKTAS.IS", "SUMAS.IS",
+    "TAVHL.IS", "TCELL.IS", "TEKTU.IS", "THYAO.IS", "TKFEN.IS", "TKNSA.IS",
+    "TMSN.IS", "TUKAS.IS", "UKSE.IS", "ULUSE.IS", "VKING.IS", "VKING.IS",
+    # GYO & Gayrimenkul
+    "AGYO.IS", "AKFGY.IS", "AKSGY.IS", "ALGYO.IS", "ATAGY.IS", "BURGY.IS",
+    "DZGYO.IS", "EGEYH.IS", "GYHO.IS", "HALKGY.IS", "KGYO.IS", "KLGYO.IS",
+    "KRGYO.IS", "LGKYO.IS", "MRGYO.IS", "NRGYO.IS", "NTRYO.IS", "OZKGY.IS",
+    "PAGYO.IS", "RGYAS.IS", "YKGYO.IS", "YGGYO.IS", "ZMKGY.IS",
+    # Makine, İnşaat & Metal
+    "ALMAD.IS", "ANIET.IS", "ARBUL.IS", "ASUZU.IS", "BASTK.IS", "BOLUC.IS",
+    "CLEBI.IS", "CONKA.IS", "DCTRK.IS", "DENGE.IS", "DFHOL.IS", "DIRIT.IS",
+    "DMRGD.IS", "EKINC.IS", "EMNIS.IS", "ERBOS.IS", "EREGL.IS", "ESEMS.IS",
+    "FENER.IS", "GEREL.IS", "GOKNR.IS", "GOLTS.IS", "HILAS.IS", "IEYHO.IS",
+    "IHEVA.IS", "INVES.IS", "ISYHO.IS", "IZMDC.IS", "KLKIM.IS", "KONYA.IS",
+    "KRDMD.IS", "KUTPO.IS", "MAALT.IS", "MERKO.IS", "MUTLU.IS", "NUHCM.IS",
+    "OZATD.IS", "PASEU.IS", "PRKME.IS", "RLKM.IS", "SAFKR.IS", "SARKY.IS",
+    "SEMTS.IS", "SILVR.IS", "SKKN.IS", "SODSN.IS", "TAVHL.IS", "TCELL.IS",
+    "TKNSA.IS", "TRKCM.IS", "TUKAS.IS", "VAKKO.IS", "VKGYO.IS", "YAPRK.IS",
+    "YASAS.IS", "ZOREN.IS", "DOGUB.IS", "TUKAS.IS", "KCHOL.IS", "TUPRS.IS",
+    # Diğer şirketler
+    "ABDIT.IS", "ACIPD.IS", "ADESE.IS", "AFYON.IS", "ANACM.IS",
+    "ASELS.IS", "ATSYH.IS", "AVTUR.IS", "AYEN.IS", "BALAT.IS", "BANVT.IS",
+    "BASGZ.IS", "BATM.IS", "BEPAS.IS", "BFREN.IS", "BKM.IS", "BRMEN.IS",
+    "BSOKE.IS", "BTCIM.IS", "CMBTN.IS", "COSMO.IS", "CVKMD.IS", "DURKN.IS",
+    "DYKHO.IS", "EGPRO.IS", "EKIZ.IS", "EKOYO.IS", "ENRUT.IS", "ERSU.IS",
+    "ESCAR.IS", "ESCOM.IS", "ETYAT.IS", "EUREN.IS", "FADE.IS", "FMIZP.IS",
+    "FORTE.IS", "GEDZA.IS", "GEREL.IS", "GLYHO.IS", "GOLDS.IS", "GOODY.IS",
+    "GRTRK.IS", "GSDDE.IS", "GSTKM.IS", "HECEB.IS", "HLEGZ.IS", "INFO.IS",
+    "ISKUR.IS", "ISMEN.IS", "KAREL.IS", "KARTN.IS", "KAYSER.IS", "KONYA.IS",
+    "KORDS.IS", "KRTM.IS", "LIDFA.IS", "LOGOS.IS", "MAKIM.IS", "MEGMT.IS",
+    "MERCN.IS", "METAL.IS", "METRO.IS", "MIKRS.IS", "MKART.IS", "MRDIN.IS",
+    "NETAS.IS", "NUGYO.IS", "OBAMS.IS", "ORGE.IS", "OSMEN.IS", "OTKAR.IS",
+    "PARSN.IS", "PATEK.IS", "PKART.IS", "PLTUR.IS", "POLHO.IS", "PRKAB.IS",
+    "PRZMA.IS", "QNBFB.IS", "RBNK.IS", "REEDR.IS", "RNFAC.IS", "RPOWER.IS",
+    "RSYO.IS", "SAFKR.IS", "SARKY.IS", "SBAG.IS", "SEKUR.IS", "SELGD.IS",
+    "SERVE.IS", "SMRTG.IS", "SUNTK.IS", "SUWEN.IS", "TACTR.IS", "TATEN.IS",
+    "TBORG.IS", "TEKTU.IS", "TFTCB.IS", "TKURU.IS", "TUREX.IS", "UEEC.IS",
+    "UFUK.IS", "ULAS.IS", "ULUFA.IS", "ULUUN.IS", "USA.IS", "USEML.IS",
+    "USYO.IS", "VBTYZ.IS", "VERTU.IS", "VKING.IS", "YATAS.IS", "YFKVN.IS",
+    "YONGA.IS", "YUNSA.IS", "ZOREN.IS", "ZTAR.IS",
 ]
+
+
+def _normalize(code: str) -> str:
+    c = code.strip().upper()
+    return c if c.endswith(".IS") else c + ".IS"
+
+
+def get_bist_tickers() -> list:
+    """Tarama listesini döndürür.
+
+    Öncelik: BIST_TICKERS_FILE ortam değişkenindeki dosya (her satır bir kod).
+    Aksi halde yerleşik BIST Tüm seed listesi kullanılır. Kodlar ".IS" ile
+    normalize edilir ve sırayı koruyarak yinelenenler temizlenir.
+    """
+    f = os.getenv("BIST_TICKERS_FILE", "")
+    codes = list(BIST_TICKERS_SEED)
+    if f and os.path.isfile(f):
+        try:
+            with open(f, encoding="utf-8") as fh:
+                file_codes = [_normalize(l) for l in fh if l.strip()]
+            if file_codes:
+                codes = file_codes
+                print(f"[i] BIST_TICKERS_FILE kullanılıyor: {f} ({len(codes)} kod)")
+        except Exception as e:  # pragma: no cover
+            print(f"[!] BIST_TICKERS_FILE okunamadı, seed kullanılacak: {e}")
+    # sırayı bozmadan tekilleştir
+    seen, out = set(), []
+    for c in codes:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
 
 # --- Yarışma / risk parametreleri -------------------------------------------
 CAPITAL = 100_000.0          # toplam sermaye
@@ -78,6 +205,26 @@ def fetch_data(symbol: str) -> Optional[pd.DataFrame]:
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     return df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+
+
+def download_batch(symbols: list) -> Optional[pd.DataFrame]:
+    """BIST Tüm listesini TEK yf.download çağrısıyla toplu indirir.
+
+    group_by="ticker" => kolonlar MultiIndex (ticker, alan) olur; 500+ hisse
+    tek seferde, yfinance'ın iç thread'leriyle çekilir (teker teker 500 çağrı
+    yerine). 120 sn'lik Gunicorn timeout'unun altında kalmanın asıl anahtarı budur.
+    """
+    symbols = list(dict.fromkeys(symbols))  # yinelenenleri koru
+    if not symbols:
+        return None
+    df = yf.download(
+        symbols, period="6mo", interval="1d",
+        progress=False, auto_adjust=True, threads=True,
+        group_by="ticker", timeout=20,
+    )
+    if df is None or df.empty:
+        return None
+    return df
 
 
 def compute_macd_signal(close: pd.Series) -> tuple:
@@ -115,16 +262,22 @@ def classic_pivots(h: float, low: float, c: float) -> dict:
     }
 
 
-def analyze_single_stock(symbol: str) -> Optional[dict]:
-    """Tek hissenin eksiksiz teknik + pivot analizini döndürür."""
-    df = fetch_data(symbol)
-    if df is None:
-        return None
+def _compute_analysis(symbol: str, df: pd.DataFrame) -> Optional[dict]:
+    """Hazır, tek hisselik OHLCV çerçevesinden eksiksiz analiz üretir.
 
-    close = df["Close"]
-    high = df["High"]
-    low = df["Low"]
-    volume = df["Volume"]
+    Hem analyze_single_stock (tek indirme) hem de scan_top_5_stocks (toplu
+    indirme + thread havuzu) bu fonksiyonu kullanır => aynı hesaplama, çifte kod yok.
+    """
+    if df is None or df.empty or len(df) < 60:
+        return None
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df.copy()
+        df.columns = df.columns.get_level_values(0)
+
+    close = df["Close"].astype(float)
+    high = df["High"].astype(float)
+    low = df["Low"].astype(float)
+    volume = df["Volume"].astype(float)
 
     price = float(close.iloc[-1])
     rsi = float(ta.rsi(close, length=14).iloc[-1])
@@ -145,7 +298,6 @@ def analyze_single_stock(symbol: str) -> Optional[dict]:
 
     target = price * (1 + TARGET_PCT)
     stop = price * (1 - STOP_PCT)
-
     rr = round((target - price) / (price - stop), 2) if price > stop else None
 
     return {
@@ -162,6 +314,11 @@ def analyze_single_stock(symbol: str) -> Optional[dict]:
         "target": target, "stop": stop, "rr": rr,
         "pivots": pivots,
     }
+
+
+def analyze_single_stock(symbol: str) -> Optional[dict]:
+    """HERHANGİ bir geçerli hisse için eksiksiz analiz döndürür (/sorgu)."""
+    return _compute_analysis(symbol, fetch_data(symbol))
 
 
 # =============================================================================
@@ -200,17 +357,39 @@ def score_stock(a: dict) -> float:
 
 
 def scan_top_5_stocks(top_n: int = 5) -> list:
-    """BIST listesini tarar, skorlar ve ilk N hisseyi döndürür."""
+    """BIST Tüm evrenini tarar, skorlar ve ilk N hisseyi döndürür.
+
+    Performans: tüm semboller TEK yf.download çağrısıyla toplu çekilir
+    (download_batch), ardından her hisse için göstergeler ThreadPoolExecutor ile
+    paralel hesaplanır. 500+ hisse tek tek indirmek yerine birkaç saniyede biter —
+    120 sn'lik Gunicorn timeout'unun altında kalır.
+    """
+    tickers = get_bist_tickers()
+    batch = download_batch(tickers)
+    if batch is None:
+        return []
+
     results = []
-    for sym in BIST_TICKERS:
-        try:
-            a = analyze_single_stock(sym)
-        except Exception:
-            a = None      # tek hisse hatası tüm taramayı durdurmaz
-        if a is None:
-            continue
-        a["score"] = score_stock(a)
-        results.append(a)
+    futures = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for sym in tickers:
+            if isinstance(batch.columns, pd.MultiIndex):
+                sub = batch[sym] if sym in batch.columns.get_level_values(0) else None
+            else:  # tek hisse düşerse
+                sub = batch
+            if sub is None or sub.empty:
+                continue
+            futures[pool.submit(_compute_analysis, sym, sub)] = sym
+        for fut in as_completed(futures):
+            try:
+                a = fut.result()
+            except Exception:
+                continue  # tek hisse hatası tüm taramayı durdurmaz
+            if a is None:
+                continue
+            a["score"] = score_stock(a)
+            results.append(a)
+
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_n]
 
