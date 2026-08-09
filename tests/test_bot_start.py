@@ -97,7 +97,7 @@ class TestGunicornBotStart(unittest.TestCase):
             "  vol[-1]=vol[-10:-1].mean()*2.5\n"
             "  idx=pd.date_range(end=pd.Timestamp.today(), periods=n)\n"
             "  return pd.DataFrame({'Open':close,'High':hi,'Low':lo,'Close':close,'Volume':vol}, index=idx)\n"
-            "syms=['AAA.IS','BBB.IS','CCC.IS','DDD.IS','EEE.IS','FFF.IS']\n"
+            "syms=m.get_bist_tickers()[:6]\n"
             "m.yf.download=lambda s,**k: pd.concat({sym:frame(i) for i,sym in enumerate(syms)},axis=1)\n"
             "top=m.scan_top_5_stocks(5)\n"
             "sc=[t['score'] for t in top]\n"
@@ -109,7 +109,8 @@ class TestGunicornBotStart(unittest.TestCase):
                            capture_output=True, text=True)
         self.assertIn("SCAN n=", p.stdout)
         self.assertIn("sorted=True fields=True", p.stdout)
-        self.assertLessEqual(int(p.stdout.split("SCAN n=")[1].split()[0]), 5)
+        n = int(p.stdout.split("SCAN n=")[1].split()[0])
+        self.assertEqual(n, 5)  # 6 geçerli seed kodundan gerçek en-iyi-5 çekildi
 
 
 if __name__ == "__main__":
