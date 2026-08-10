@@ -521,6 +521,7 @@ def api_scan():
     payload = {
         "status": "scanning",
         "message": "Tarama arka planda başlatıldı, lütfen 10 saniye sonra tekrar deneyin",
+        "scan_running": _SCAN_RUNNING,
     }
     if _SCAN_LAST_ERROR:
         payload["last_error"] = _SCAN_LAST_ERROR
