@@ -54,7 +54,7 @@ BIST_TICKERS_SEED = [
     "AKBNK.IS", "ALBRK.IS", "GARAN.IS", "HALKB.IS", "ICBCR.IS", "ISKUR.IS",
     "ISBIR.IS", "ISFIN.IS", "ISATY.IS", "JANTS.IS", "KLNMA.IS", "SKBNK.IS",
     "TSKB.IS", "TUKAS.IS", "VAKFN.IS", "VAKBN.IS", "YKBNK.IS", 
-    "AEFES.IS", "AKSA.IS", "AKSEN.IS", "AGIDA.IS", "AKSUE.IS",
+    "AEFES.IS", "AKSA.IS", "AKSEN.IS", "AKSUE.IS",
     # Holding & Yatırım
     "AGHOL.IS", "ALARK.IS", "AVHOL.IS", "BAGFS.IS", "CCOLA.IS", "CIMSA.IS",
     "DOHOL.IS", "ECZYT.IS", "ENKAI.IS", "FROTO.IS", "GOLTS.IS",
@@ -65,18 +65,18 @@ BIST_TICKERS_SEED = [
     "ARCLK.IS", "BANVT.IS", "BFREN.IS", "BIMAS.IS", "CANTE.IS", "DANIS.IS",
     "ERSU.IS", "ETIY.IS", "GENTS.IS", "IEYHO.IS", "IZFAS.IS", "KERVT.IS",
     "KNYA.IS", "KRSAN.IS", "KUTPO.IS", "MNDRS.IS", "PENGD.IS", "PINSU.IS",
-    "SELGD.IS", "TATGD.IS", "TBORG.IS", "TKURU.IS", "ULKER.IS", 
+    "SELGD.IS", "TATGD.IS", "TBORG.IS", "ULKER.IS", 
     "YAYLA.IS", "YYLAP.IS",
     # Petrokimya & Enerji
     "ALCAR.IS", "ALKIM.IS", "AYGAZ.IS", "BATAS.IS", "BRISA.IS", "DMSAS.IS",
-    "EGSER.IS", "EGEEN.IS", "ENERY.IS", "ENJSA.IS", "EREGL.IS", "GEDIZ.IS",
+    "EGSER.IS", "EGEEN.IS", "ENERY.IS", "ENJSA.IS", "EREGL.IS", 
     "IZENR.IS", "KARSN.IS", "KRTEK.IS", "MAKTK.IS", "MRSHL.IS", "NATEN.IS",
     "ODAS.IS", "ORGE.IS", "PAPIL.IS", "PETKM.IS", "SAYAS.IS", "SODSN.IS",
     "TATEN.IS", "TAVHL.IS", "TERA.IS", "TUPRS.IS", "ZOREN.IS",
     # Savunma & Otomotiv & Teknoloji
     "ARCLK.IS", "ASELS.IS", "BERA.IS", "BJKAS.IS", "BOSSA.IS",
     "BRKSN.IS", "BURSA.IS", "CLEBI.IS", "COSMO.IS", "DOAS.IS", "DOKTA.IS",
-    "EAGB.IS", "ECZYT.IS", "ENSA.IS", "FMIZP.IS", "FROTO.IS", "GESAN.IS",
+    "EAGB.IS", "ECZYT.IS", "FMIZP.IS", "FROTO.IS", "GESAN.IS",
     "GRNYO.IS", "HCAY.IS", "HEKTS.IS", "HUBVC.IS", "KARSN.IS", "KONTR.IS",
     "KCHOL.IS", "MAVI.IS", "MGROS.IS", "OTKAR.IS", "PGSUS.IS", "SDTTR.IS",
     "TAVHL.IS", "TOASO.IS", "TTKOM.IS", "TUKAS.IS", "VESTL.IS",
@@ -88,23 +88,23 @@ BIST_TICKERS_SEED = [
     # Hizmet & Turizm & GYO
     "AKENR.IS", "AKMGY.IS", "ALGYO.IS", "ATSYH.IS", "AVTUR.IS", 
     "DOHOL.IS", "EKGYO.IS", "EMKEL.IS", "HLGYO.IS", "ISGYO.IS", "KLKIM.IS",
-    "KONTY.IS", "MARTI.IS", "METRO.IS", "MIATK.IS", "MTRKS.IS", "NETAS.IS",
+    "MARTI.IS", "METRO.IS", "MIATK.IS", "MTRKS.IS", "NETAS.IS",
     "PEKGY.IS", "RGYAS.IS", "SARKY.IS", "SNGYO.IS", "TSGYO.IS", "TUPRS.IS",
     "VKGYO.IS", "YKBNK.IS",
     # Diğer / Tek halka
     "AFYON.IS", "ANSA.IS", "APYUN.IS", "ARASE.IS", "ARENA.IS",
     "ARZUM.IS", "ASUZU.IS", "AUTKER.IS", "AVOD.IS",
-    "AYCES.IS", "AYEM.IS", "BAGFS.IS", "BAKAB.IS", "BASGZ.IS", "BLCYT.IS",
+    "AYCES.IS", "BAGFS.IS", "BAKAB.IS", "BASGZ.IS", "BLCYT.IS",
     "BORSK.IS", "BTCIM.IS", "BUCIM.IS", "BURVA.IS", "CANTE.IS", "CASA.IS",
     "CEDBN.IS", "CEMTS.IS", "CELHA.IS", "CEMAS.IS", "CUSAN.IS", "DAGI.IS",
-    "DERIM.IS", "DESA.IS", "DIRIT.IS", "DITAS.IS", "DOBUR.IS", "DOCO.IS",
+    "DERIM.IS", "DESA.IS", "DIRIT.IS", "DITAS.IS", "DOCO.IS",
     "DOKTA.IS", "DURDO.IS", "DYOBY.IS", "ECZYT.IS", "EGEPO.IS", "EKIZ.IS",
     "ETYAT.IS", "EUREN.IS", "EUYO.IS", "FORTE.IS", "FRIGO.IS", "GARFA.IS",
-    "GEDZA.IS", "GLYHO.IS", "GOLDS.IS", "GOODY.IS", "GRAFT.IS", "GRNYO.IS",
+    "GEDZA.IS", "GLYHO.IS", "GOODY.IS", "GRAFT.IS", "GRNYO.IS",
     "HDFGS.IS", "HMSO.IS", "INFO.IS", "ISKPL.IS", "ISMEN.IS",
     "KAYSE.IS", "KCHOL.IS", "KLMSN.IS", "LIDER.IS", "LUKSK.IS",
     "MAGEN.IS", "MAKIM.IS", "MEMSA.IS", "NUGYO.IS",
-    "OBAMS.IS", "ORCAY.IS", "ORGSZ.IS", "OSMEN.IS", "OZSUB.IS",
+    "OBAMS.IS", "ORCAY.IS", "OSMEN.IS", "OZSUB.IS",
     "PARSN.IS", "PASEU.IS", "PATEK.IS", "POLHO.IS", "PRZMA.IS", 
     "REEDR.IS", "RPOWER.IS", "RSYO.IS", "SAFKR.IS", "SARKY.IS",
     "SBAG.IS", "SEKUR.IS", "SEYKM.IS", "SILVR.IS", "SKTAS.IS", "SUMAS.IS",
@@ -113,18 +113,18 @@ BIST_TICKERS_SEED = [
     # GYO & Gayrimenkul
     "AGYO.IS", "AKFGY.IS", "AKSGY.IS", "ALGYO.IS", "ATAGY.IS", 
     "DZGYO.IS", "EGEYH.IS", "GYHO.IS", "HALKGY.IS", "KGYO.IS", "KLGYO.IS",
-    "KRGYO.IS", "LGKYO.IS", "MRGYO.IS", "NRGYO.IS", "NTRYO.IS", "OZKGY.IS",
+    "KRGYO.IS", "LGKYO.IS", "MRGYO.IS", "OZKGY.IS",
     "PAGYO.IS", "RGYAS.IS", "YKGYO.IS", "YGGYO.IS", "ZMKGY.IS",
     # Makine, İnşaat & Metal
     "ANIET.IS", "ASUZU.IS", "BASTK.IS", "BOLUC.IS",
     "CLEBI.IS", "CONKA.IS", "DCTRK.IS", "DENGE.IS", "DFHOL.IS", "DIRIT.IS",
-    "DMRGD.IS", "EKINC.IS", "EMNIS.IS", "ERBOS.IS", "EREGL.IS", "ESEMS.IS",
+    "DMRGD.IS", "EKINC.IS", "EMNIS.IS", "ERBOS.IS", "EREGL.IS", 
     "FENER.IS", "GEREL.IS", "GOKNR.IS", "GOLTS.IS", "HILAS.IS", "IEYHO.IS",
     "IHEVA.IS", "INVES.IS", "IZMDC.IS", "KLKIM.IS", "KONYA.IS",
-    "KRDMD.IS", "KUTPO.IS", "MAALT.IS", "MERKO.IS", "MUTLU.IS", "NUHCM.IS",
+    "KRDMD.IS", "KUTPO.IS", "MAALT.IS", "MERKO.IS", "NUHCM.IS",
     "OZATD.IS", "PASEU.IS", "PRKME.IS", "RLKM.IS", "SAFKR.IS", "SARKY.IS",
     "SILVR.IS", "SKKN.IS", "SODSN.IS", "TAVHL.IS", "TCELL.IS",
-    "TKNSA.IS", "TRKCM.IS", "TUKAS.IS", "VAKKO.IS", "VKGYO.IS", "YAPRK.IS",
+    "TKNSA.IS", "TUKAS.IS", "VAKKO.IS", "VKGYO.IS", "YAPRK.IS",
     "ZOREN.IS", "DOGUB.IS", "TUKAS.IS", "KCHOL.IS", "TUPRS.IS",
     # Diğer şirketler
     "ACIPD.IS", "ADESE.IS", "AFYON.IS", 
@@ -133,19 +133,19 @@ BIST_TICKERS_SEED = [
     "BSOKE.IS", "BTCIM.IS", "CMBTN.IS", "COSMO.IS", "CVKMD.IS", "DURKN.IS",
     "DYKHO.IS", "EGPRO.IS", "EKIZ.IS", "ENRUT.IS", "ERSU.IS",
     "ESCAR.IS", "ESCOM.IS", "ETYAT.IS", "EUREN.IS", "FADE.IS", "FMIZP.IS",
-    "FORTE.IS", "GEDZA.IS", "GEREL.IS", "GLYHO.IS", "GOLDS.IS", "GOODY.IS",
+    "FORTE.IS", "GEDZA.IS", "GEREL.IS", "GLYHO.IS", "GOODY.IS",
     "GRTRK.IS", "GSDDE.IS", "GSTKM.IS", "HECEB.IS", "INFO.IS",
     "ISKUR.IS", "ISMEN.IS", "KAREL.IS", "KARTN.IS", "KAYSER.IS", "KONYA.IS",
     "KORDS.IS", "KRTM.IS", "LIDFA.IS", "MAKIM.IS", "MEGMT.IS",
-    "MERCN.IS", "METAL.IS", "METRO.IS", "MIKRS.IS", "MKART.IS", "MRDIN.IS",
+    "MERCN.IS", "METAL.IS", "METRO.IS", "MIKRS.IS", "MKART.IS", 
     "NETAS.IS", "NUGYO.IS", "OBAMS.IS", "ORGE.IS", "OSMEN.IS", "OTKAR.IS",
     "PARSN.IS", "PATEK.IS", "PKART.IS", "PLTUR.IS", "POLHO.IS", "PRKAB.IS",
     "PRZMA.IS", "REEDR.IS", "RPOWER.IS",
     "RSYO.IS", "SAFKR.IS", "SARKY.IS", "SBAG.IS", "SEKUR.IS", "SELGD.IS",
     "SERVE.IS", "SMRTG.IS", "SUNTK.IS", "SUWEN.IS", "TACTR.IS", "TATEN.IS",
-    "TBORG.IS", "TEKTU.IS", "TFTCB.IS", "TKURU.IS", "TUREX.IS", "UEEC.IS",
+    "TBORG.IS", "TEKTU.IS", "TFTCB.IS", "TUREX.IS", "UEEC.IS",
     "UFUK.IS", "ULAS.IS", "ULUFA.IS", "ULUUN.IS", "USA.IS", 
-    "USYO.IS", "VBTYZ.IS", "VERTU.IS", "VKING.IS", "YATAS.IS", "YFKVN.IS",
+    "USYO.IS", "VBTYZ.IS", "VERTU.IS", "VKING.IS", "YATAS.IS", 
     "YONGA.IS", "YUNSA.IS", "ZOREN.IS", "ZTAR.IS",
 ]
 
@@ -434,6 +434,45 @@ def scan_top_5_stocks(top_n: int = 5) -> list:
         _SCAN_CACHE_TOP_N = top_n
         return [dict(a) for a in _SCAN_CACHE]
 
+
+# --- Arka plan tarama yönetimi (non-blocking /api/scan) ---------------------
+_SCAN_RUNNING = False          # arka plan taraması zaten çalışıyor mu
+_SCAN_RUNNING_LOCK = threading.Lock()
+
+
+def _scan_cache_fresh(top_n: int = 5) -> bool:
+    """Cache dolu ve TTL içinde mi (indirme gerekmez mi)."""
+    return (_SCAN_CACHE is not None and _SCAN_CACHE_TOP_N == top_n
+            and (time.time() - _SCAN_CACHE_TS) < SCAN_CACHE_TTL)
+
+
+def _ensure_scan_running():
+    """Cache soğuksa taramayı TEK arka plan thread'inde başlatır.
+
+    Eşzamanlı /api/scan istekleri (F5) yalnızca bir tarama başlatır; diğerleri
+    mevcut arka plan işini bekler. HTTP isteğini ASLA bloklamaz — böylece
+    Gunicorn 120s timeout'u (Bad Gateway) tetiklenmez.
+    """
+    global _SCAN_RUNNING
+    with _SCAN_RUNNING_LOCK:
+        if _SCAN_RUNNING:
+            return
+        if _scan_cache_fresh():
+            return  # biri bu arada tazelemiş
+        _SCAN_RUNNING = True
+
+    def _bg():
+        try:
+            scan_top_5_stocks()
+        except Exception as e:  # pragma: no cover
+            print(f"[!] Arka plan tarama hatası: {e}")
+        finally:
+            global _SCAN_RUNNING
+            with _SCAN_RUNNING_LOCK:
+                _SCAN_RUNNING = False
+
+    threading.Thread(target=_bg, name="scan-background", daemon=True).start()
+
 # =============================================================================
 # 3) PORTFÖY HESAPLAMA
 # =============================================================================
@@ -464,18 +503,20 @@ def status():
 
 @app.route("/api/scan", methods=["GET"])
 def api_scan():
-    """Top 5 momentum listesi. YF hata/rate-limit durumunda worker asla
-    çökmez: scan() içinde bayat cache'e düşer; burada ek bir güvenlik ağı."""
-    try:
-        top = scan_top_5_stocks()
-    except Exception as e:  # pragma: no cover — son çare (html'dan önce)
-        # Bilinen YF hatalarını "yumuşak" hata olarak işaretle; worker'a ölümü yok.
-        name = type(e).__name__
-        if "RateLimit" in name or "Crumb" in name or "InvalidIncompleteData" in name:
-            return jsonify({"error": "yfinance geçici olarak yanıt vermiyor",
-                            "reason": name, "stale": True}), 503
-        return jsonify({"error": "tarama başarısız", "reason": name}), 500
-    return jsonify({"count": len(top), "results": top})
+    """Top 5 momentum listesi — non-blocking.
+
+    Cache taze ise anında döner. Cache soğuksa tarama arka plan thread'inde
+    başlatılır ve 202 döner (Gunicorn 120s timeout / Bad Gateway koruması):
+    HTTP isteği asla bloklanmaz.
+    """
+    if _scan_cache_fresh():
+        return jsonify({"count": len(_SCAN_CACHE),
+                        "results": [dict(a) for a in _SCAN_CACHE]})
+    _ensure_scan_running()
+    return jsonify({
+        "status": "scanning",
+        "message": "Tarama arka planda başlatıldı, lütfen 10 saniye sonra tekrar deneyin",
+    }), 202
 
 
 @app.route("/api/stock/<symbol>", methods=["GET"])
@@ -727,6 +768,9 @@ if TELEGRAM_BOT_TOKEN:
     bot_thread = threading.Thread(target=start_bot, name="telegram-bot", daemon=True)
     bot_thread.start()
     print("[i] Telegram bot thread started in background.")
+    # Cache ısındırma: açılışta arka planda ilk tarama → /api/scan açılışta bile
+    # hazır sonuç döndürür (ilk istekte Bad Gateway / 120s timeout riski yok).
+    _ensure_scan_running()
 else:
     print("[!] TELEGRAM_BOT_TOKEN is missing. Running in web-only mode.")
 

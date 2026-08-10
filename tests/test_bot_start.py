@@ -185,6 +185,44 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertIn("LOCK downloads=1 all5=True", blob)
         self.assertIn("ERRFALLBACK stale=THYAO.IS", blob)
 
+    def test_api_scan_nonblocking_202_then_200(self):
+        """Soğuk cache'te /api/scan 202 (arka plan taraması) döner ve bloklamaz;
+        tarama bitince aynı endpoint 200 + sonuç verir."""
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys,time\n"
+            "sys.path.insert(0,'@R@')\n"
+            "import numpy as np,pandas as pd\n"
+            "import main as m\n"
+            "def fr(s):\n"
+            "  rng=np.random.default_rng(s); n=90\n"
+            "  c=np.linspace(100.,99.,n)+rng.normal(0,0.35,n); c[-1]+=1.0\n"
+            "  hi=c*1.002; lo=c*0.998\n"
+            "  v=np.array(rng.integers(1_000_000,3_000_000,n),dtype=float); v[-1]=v[-10:-1].mean()*2.0\n"
+            "  return pd.DataFrame({'Open':c,'High':hi,'Low':lo,'Close':c,'Volume':v}, index=pd.date_range(end=pd.Timestamp.today(),periods=n))\n"
+            "syms=m.get_bist_tickers()[:6]\n"
+            "def dl(s,**k): return pd.concat({sym:fr(i) for i,sym in enumerate(syms)},axis=1)\n"
+            "m.yf.download=dl\n"
+            "m._SCAN_CACHE=None; m._SCAN_CACHE_TS=0.0; m._SCAN_CACHE_TOP_N=None\n"
+            "c=m.app.test_client()\n"
+            "r=c.get('/api/scan')\n"
+            "j=r.get_json(); print('API cold=%d status=%s' % (r.status_code, j.get('status')))\n"
+            "t0=time.time()\n"
+            "while time.time()-t0 < 15:\n"
+            "  r2=c.get('/api/scan')\n"
+            "  if r2.status_code==200: break\n"
+            "  time.sleep(0.3)\n"
+            "j2=r2.get_json()\n"
+            "print('API warm=%d count=%s' % (r2.status_code, j2.get('count')))\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env,
+                           capture_output=True, text=True)
+        blob = p.stdout + p.stderr
+        self.assertIn("API cold=202 status=scanning", blob)
+        self.assertIn("API warm=200 count=5", blob)
+
 
 # --- APScheduler timezone fix (pytz) ---------------------------------------
     def test_scheduler_accepts_pytz_timezone(self):
