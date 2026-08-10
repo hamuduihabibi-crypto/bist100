@@ -206,10 +206,24 @@ def fetch_data(symbol: str) -> tuple:
     çökmez, (None, kaynak) yumuşak dönülür.
     """
     try:
-        df = yf.download(
-            symbol, period="6mo", interval="1d",
-            progress=False, auto_adjust=True, threads=False, timeout=20,
-        )
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import TimeoutError as _YF_FutTimeout
+        # Yahoo, Render veri-merkezi IP'sini rate-limit edebilir; yf.download'in
+        # timeout=20'si yalnızca bağlantı-başınadır ve toplamı sınırlamaz. Bu
+        # yüzden YF çağrısı da 20s'lik thread-timeout'a alınır -> toplam blok
+        # ~20s(yf)+15s(isy) = ~35s < Render proxy ~60s; 502 olmaz.
+        _yf_pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            _yf_fut = _yf_pool.submit(yf.download, symbol,
+                                      period="6mo", interval="1d",
+                                      progress=False, auto_adjust=True,
+                                      threads=False, timeout=20)
+            try:
+                df = _yf_fut.result(timeout=20)
+            except _YF_FutTimeout:
+                df = None  # yavaş/takılı Yahoo -> yedek kaynağa geç
+        finally:
+            _yf_pool.shutdown(wait=False)  # takılı thread'i bekleme
         if df is not None and not df.empty and len(df) >= 60:
             if isinstance(df.columns, pd.MultiIndex):
                 df = df.copy()
