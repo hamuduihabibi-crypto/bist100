@@ -144,6 +144,47 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertIn("CACHE first=5 second=5 downloads=1 same=True", blob)
         self.assertIn("CACHE2 after_expiry_downloads=2", blob)  # TTL dolunca yeniden indirir
 
+    def test_scan_concurrent_lock_and_error_fallback(self):
+        """Eşzamanlı tarama yalnızca 1 download üretir (lock) ve download
+        hatasında bayat cache'e düşer (worker çökmez)."""
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys,time,threading\n"
+            "sys.path.insert(0,'@R@')\n"
+            "import numpy as np,pandas as pd\n"
+            "import main as m\n"
+            "def fr(s):\n"
+            "  rng=np.random.default_rng(s); n=90\n"
+            "  c=np.linspace(100.,99.,n)+rng.normal(0,0.35,n); c[-1]+=1.0\n"
+            "  hi=c*1.002; lo=c*0.998\n"
+            "  v=np.array(rng.integers(1_000_000,3_000_000,n),dtype=float); v[-1]=v[-10:-1].mean()*2.0\n"
+            "  return pd.DataFrame({'Open':c,'High':hi,'Low':lo,'Close':c,'Volume':v}, index=pd.date_range(end=pd.Timestamp.today(),periods=n))\n"
+            "syms=m.get_bist_tickers()[:6]\n"
+            "cnt=[0]; lk=threading.Lock()\n"
+            "def slow_dl(s,**k):\n"
+            "  with lk: cnt[0]+=1\n"
+            "  time.sleep(0.25)\n"
+            "  return pd.concat({sym:fr(i) for i,sym in enumerate(syms)},axis=1)\n"
+            "m.yf.download=slow_dl\n"
+            "res=[]\n"
+            "def w(): res.append(len(m.scan_top_5_stocks(5)))\n"
+            "ts=[threading.Thread(target=w) for _ in range(6)]\n"
+            "[t.start() for t in ts]; [t.join() for t in ts]\n"
+            "print('LOCK downloads=%d all5=%s' % (cnt[0], sorted(res)==[5]*6))\n"
+            "def boom(*a,**k): raise RuntimeError('Failed to obtain a crumb')\n"
+            "m.download_batch=boom\n"
+            "m._SCAN_CACHE=[{'symbol':'THYAO.IS','score':9.9}]; m._SCAN_CACHE_TS=time.time(); m._SCAN_CACHE_TOP_N=5\n"
+            "fb=m.scan_top_5_stocks(5)\n"
+            "print('ERRFALLBACK stale=%s' % (fb[0]['symbol'] if fb else 'EMPTY'))\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env,
+                           capture_output=True, text=True)
+        blob = p.stdout + p.stderr
+        self.assertIn("LOCK downloads=1 all5=True", blob)
+        self.assertIn("ERRFALLBACK stale=THYAO.IS", blob)
+
 
 # --- APScheduler timezone fix (pytz) ---------------------------------------
     def test_scheduler_accepts_pytz_timezone(self):

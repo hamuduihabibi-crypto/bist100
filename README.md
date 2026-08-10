@@ -15,7 +15,7 @@ kriterlerini karşılayan hisseleri skorlayıp **Top 5** listesini hem web API h
 
 | Alan | Detay |
 |------|-------|
-| **BIST Tüm Evreni** | BIST 30/100 ile sınırlı kalmayıp **~384+ seed hisse** (`main.py` → `BIST_TICKERS_SEED`) içeren geniş bir evreni tarar. En güncel tam liste için `BIST_TICKERS_FILE` ortam değişkeniyle bir metin dosyası da belirtilebilir (bir satır bir kod). |
+| **BIST Tüm Evreni** | BIST 30/100 ile sınırlı kalmayıp **~356 adet arındırılmış seed hisse** (`main.py` → `BIST_TICKERS_SEED`) içeren geniş bir evreni tarar. Log'dan çıkarılan 28 sorunlu/delisted kod (ASYAB, BMEKS, ANACM, LOGOS, BATM, ISYHO, OKANT, …) listede yoktur. En güncel tam liste için `BIST_TICKERS_FILE` ortam değişkeniyle bir metin dosyası da belirtilebilir (bir satır bir kod). |
 | **Dinamik Sorgu (`/sorgu`)** | Borsa İstanbul'da işlem gören **herhangi bir** hisse kodu canlı analiz edilir — kodun seed evreninde olması gerekmez (`/sorgu GOZDE`). |
 | **Performans Optimizasyonu** | `yf.download(BIST_TICKERS, ..., group_by="ticker")` ile **tek paket (batch) indirme** + `concurrent.futures.ThreadPoolExecutor` (max_workers=4) ile **paralel** gösterge hesabı. 500'e yakın hisse, 120 sn'lik Render/Gunicorn timeout'una takılmadan saniyeler içinde taranır. Ayrıca sonuç **10 dakika bellekte cache'lenir** (`SCAN_CACHE_TTL=600`) — aynı TTL aralığındaki `/top5`, `/api/scan` ve `/ototarma` istekleri **yeniden indirme yapmaz**, bu da Render'da CPU/RAM yükünü ve CPU limitini düşürür. |
 | **Teknik Göstergeler** | RSI(14) momentum bandı (55–72), MACD(12,26,9) sinyalleri, EMA20/50 trendi, 20 günlük destek/direnç, Klasik Pivot seviyeleri (P, R1–R3, S1–S3) ve Hacim Surge %. |
@@ -36,7 +36,7 @@ kriterlerini karşılayan hisseleri skorlayıp **Top 5** listesini hem web API h
         ┌──────────────────────────────────────────────────────────────────┐
         │   main.py  —  Analiz Motoru                                      │
         │   • get_bist_tickers() : BIST Tüm seed / BIST_TICKERS_FILE       │
-        │   • download_batch()   : TEK çağrıda ~384+ hissenin OHLCV'si     │
+        │   • download_batch()   : TEK çağrıda ~356 hissenin OHLCV'si     │
         │   • _compute_analysis(): RSI · MACD · EMA20/50 · pivotlar · surge │
         │   • score_stock()      : momentum puanı (0–100+)                 │
         │   • scan_top_5_stocks(): ThreadPoolExecutor (max_workers=4)      │
@@ -181,7 +181,7 @@ cd bist_telegram_bot
 env -u PYTHONPATH .venv312/Scripts/python.exe -m unittest tests.test_bot_start -v
 ```
 
-Beklenen çıktı: `Ran 8 tests ... OK`, çıkış kodu `0`.
+Beklenen çıktı: `Ran 9 tests ... OK`, çıkış kodu `0`.
 
 ---
 
@@ -211,7 +211,7 @@ bist_telegram_bot/
 | `TARGET_PCT` / `STOP_PCT` | `0.06` / `0.03` | Hedef / sert stop (R/R ≈ 2:1). |
 | `RSI_MIN`, `RSI_MAX` | `55` / `72` | Momentum RSI bandı. |
 | `AUTO_SCAN_INTERVAL_MIN` | `30` | `/ototarma` tarama sıklığı (dk). |
-| `BIST_TICKERS_SEED` | ~384 kod | BIST Tüm seed evreni (`get_bist_tickers()`). |
+| `BIST_TICKERS_SEED` | ~356 kod | BIST Tüm seed evreni (`get_bist_tickers()`); delisted kod çıkarılmış. |
 | `BIST_TICKERS_FILE` | (env) | Seed yerine geçen tam liste dosyası. |
 
 ---

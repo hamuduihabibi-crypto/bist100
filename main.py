@@ -58,7 +58,7 @@ BIST_TICKERS_SEED = [
     # Holding & Yatırım
     "AGHOL.IS", "ALARK.IS", "AVHOL.IS", "BAGFS.IS", "CCOLA.IS", "CIMSA.IS",
     "DOHOL.IS", "ECZYT.IS", "ENKAI.IS", "FROTO.IS", "GOLTS.IS",
-    "GOZDE.IS", "GSDHO.IS", "IBAY.IS", "ISYHO.IS", "KCHOL.IS", 
+    "GOZDE.IS", "GSDHO.IS", "IBAY.IS", "KCHOL.IS", 
     "NTHOL.IS", "OYAKC.IS", "SAHOL.IS", "SISE.IS", "TRCAS.IS",
     "TSPOR.IS", "TTRAK.IS", "YATAS.IS", "ZOREN.IS",
     # Gıda & İçecek
@@ -86,14 +86,14 @@ BIST_TICKERS_SEED = [
     "NUGYO.IS", "OYLUM.IS", "RTAYB.IS", "SELGD.IS", "SMRTG.IS", "TMPOL.IS",
     "TRILC.IS",
     # Hizmet & Turizm & GYO
-    "AKENR.IS", "AKMGY.IS", "ALGYO.IS", "ATSYH.IS", "AVTUR.IS", "BRKGY.IS",
+    "AKENR.IS", "AKMGY.IS", "ALGYO.IS", "ATSYH.IS", "AVTUR.IS", 
     "DOHOL.IS", "EKGYO.IS", "EMKEL.IS", "HLGYO.IS", "ISGYO.IS", "KLKIM.IS",
     "KONTY.IS", "MARTI.IS", "METRO.IS", "MIATK.IS", "MTRKS.IS", "NETAS.IS",
     "PEKGY.IS", "RGYAS.IS", "SARKY.IS", "SNGYO.IS", "TSGYO.IS", "TUPRS.IS",
     "VKGYO.IS", "YKBNK.IS",
     # Diğer / Tek halka
     "AFYON.IS", "ANSA.IS", "APYUN.IS", "ARASE.IS", "ARENA.IS",
-    "ARZUM.IS", "ASUZU.IS", "ATAAY.IS", "AUTKER.IS", "AVOD.IS",
+    "ARZUM.IS", "ASUZU.IS", "AUTKER.IS", "AVOD.IS",
     "AYCES.IS", "AYEM.IS", "BAGFS.IS", "BAKAB.IS", "BASGZ.IS", "BLCYT.IS",
     "BORSK.IS", "BTCIM.IS", "BUCIM.IS", "BURVA.IS", "CANTE.IS", "CASA.IS",
     "CEDBN.IS", "CEMTS.IS", "CELHA.IS", "CEMAS.IS", "CUSAN.IS", "DAGI.IS",
@@ -104,32 +104,32 @@ BIST_TICKERS_SEED = [
     "HDFGS.IS", "HMSO.IS", "INFO.IS", "ISKPL.IS", "ISMEN.IS",
     "KAYSE.IS", "KCHOL.IS", "KLMSN.IS", "LIDER.IS", "LUKSK.IS",
     "MAGEN.IS", "MAKIM.IS", "MEMSA.IS", "NUGYO.IS",
-    "OBAMS.IS", "OKANT.IS", "ORCAY.IS", "ORGSZ.IS", "OSMEN.IS", "OZSUB.IS",
+    "OBAMS.IS", "ORCAY.IS", "ORGSZ.IS", "OSMEN.IS", "OZSUB.IS",
     "PARSN.IS", "PASEU.IS", "PATEK.IS", "POLHO.IS", "PRZMA.IS", 
-    "REEDR.IS", "RNFAC.IS", "RPOWER.IS", "RSYO.IS", "SAFKR.IS", "SARKY.IS",
+    "REEDR.IS", "RPOWER.IS", "RSYO.IS", "SAFKR.IS", "SARKY.IS",
     "SBAG.IS", "SEKUR.IS", "SEYKM.IS", "SILVR.IS", "SKTAS.IS", "SUMAS.IS",
     "TAVHL.IS", "TCELL.IS", "TEKTU.IS", "THYAO.IS", "TKFEN.IS", "TKNSA.IS",
     "TMSN.IS", "TUKAS.IS", "UKSE.IS", "ULUSE.IS", "VKING.IS", "VKING.IS",
     # GYO & Gayrimenkul
-    "AGYO.IS", "AKFGY.IS", "AKSGY.IS", "ALGYO.IS", "ATAGY.IS", "BURGY.IS",
+    "AGYO.IS", "AKFGY.IS", "AKSGY.IS", "ALGYO.IS", "ATAGY.IS", 
     "DZGYO.IS", "EGEYH.IS", "GYHO.IS", "HALKGY.IS", "KGYO.IS", "KLGYO.IS",
     "KRGYO.IS", "LGKYO.IS", "MRGYO.IS", "NRGYO.IS", "NTRYO.IS", "OZKGY.IS",
     "PAGYO.IS", "RGYAS.IS", "YKGYO.IS", "YGGYO.IS", "ZMKGY.IS",
     # Makine, İnşaat & Metal
-    "ALMAD.IS", "ANIET.IS", "ASUZU.IS", "BASTK.IS", "BOLUC.IS",
+    "ANIET.IS", "ASUZU.IS", "BASTK.IS", "BOLUC.IS",
     "CLEBI.IS", "CONKA.IS", "DCTRK.IS", "DENGE.IS", "DFHOL.IS", "DIRIT.IS",
     "DMRGD.IS", "EKINC.IS", "EMNIS.IS", "ERBOS.IS", "EREGL.IS", "ESEMS.IS",
     "FENER.IS", "GEREL.IS", "GOKNR.IS", "GOLTS.IS", "HILAS.IS", "IEYHO.IS",
-    "IHEVA.IS", "INVES.IS", "ISYHO.IS", "IZMDC.IS", "KLKIM.IS", "KONYA.IS",
+    "IHEVA.IS", "INVES.IS", "IZMDC.IS", "KLKIM.IS", "KONYA.IS",
     "KRDMD.IS", "KUTPO.IS", "MAALT.IS", "MERKO.IS", "MUTLU.IS", "NUHCM.IS",
     "OZATD.IS", "PASEU.IS", "PRKME.IS", "RLKM.IS", "SAFKR.IS", "SARKY.IS",
-    "SEMTS.IS", "SILVR.IS", "SKKN.IS", "SODSN.IS", "TAVHL.IS", "TCELL.IS",
+    "SILVR.IS", "SKKN.IS", "SODSN.IS", "TAVHL.IS", "TCELL.IS",
     "TKNSA.IS", "TRKCM.IS", "TUKAS.IS", "VAKKO.IS", "VKGYO.IS", "YAPRK.IS",
-    "YASAS.IS", "ZOREN.IS", "DOGUB.IS", "TUKAS.IS", "KCHOL.IS", "TUPRS.IS",
+    "ZOREN.IS", "DOGUB.IS", "TUKAS.IS", "KCHOL.IS", "TUPRS.IS",
     # Diğer şirketler
     "ACIPD.IS", "ADESE.IS", "AFYON.IS", 
     "ASELS.IS", "ATSYH.IS", "AVTUR.IS", "AYEN.IS", "BALAT.IS", "BANVT.IS",
-    "BASGZ.IS", "BATM.IS", "BEPAS.IS", "BFREN.IS", "BRMEN.IS",
+    "BASGZ.IS", "BEPAS.IS", "BFREN.IS", "BRMEN.IS",
     "BSOKE.IS", "BTCIM.IS", "CMBTN.IS", "COSMO.IS", "CVKMD.IS", "DURKN.IS",
     "DYKHO.IS", "EGPRO.IS", "EKIZ.IS", "ENRUT.IS", "ERSU.IS",
     "ESCAR.IS", "ESCOM.IS", "ETYAT.IS", "EUREN.IS", "FADE.IS", "FMIZP.IS",
@@ -140,11 +140,11 @@ BIST_TICKERS_SEED = [
     "MERCN.IS", "METAL.IS", "METRO.IS", "MIKRS.IS", "MKART.IS", "MRDIN.IS",
     "NETAS.IS", "NUGYO.IS", "OBAMS.IS", "ORGE.IS", "OSMEN.IS", "OTKAR.IS",
     "PARSN.IS", "PATEK.IS", "PKART.IS", "PLTUR.IS", "POLHO.IS", "PRKAB.IS",
-    "PRZMA.IS", "REEDR.IS", "RNFAC.IS", "RPOWER.IS",
+    "PRZMA.IS", "REEDR.IS", "RPOWER.IS",
     "RSYO.IS", "SAFKR.IS", "SARKY.IS", "SBAG.IS", "SEKUR.IS", "SELGD.IS",
     "SERVE.IS", "SMRTG.IS", "SUNTK.IS", "SUWEN.IS", "TACTR.IS", "TATEN.IS",
     "TBORG.IS", "TEKTU.IS", "TFTCB.IS", "TKURU.IS", "TUREX.IS", "UEEC.IS",
-    "UFUK.IS", "ULAS.IS", "ULUFA.IS", "ULUUN.IS", "USA.IS", "USEML.IS",
+    "UFUK.IS", "ULAS.IS", "ULUFA.IS", "ULUUN.IS", "USA.IS", 
     "USYO.IS", "VBTYZ.IS", "VERTU.IS", "VKING.IS", "YATAS.IS", "YFKVN.IS",
     "YONGA.IS", "YUNSA.IS", "ZOREN.IS", "ZTAR.IS",
 ]
@@ -364,6 +364,7 @@ SCAN_CACHE_TTL = 600          # tarama sonucunun ömrü (saniye)
 _SCAN_CACHE = None            # son tarama sonucu (dict listesi)
 _SCAN_CACHE_TS = 0.0          # son taramanın zaman damgası
 _SCAN_CACHE_TOP_N = None      # cache'lenen top_n (farklı N için cache geçersiz)
+_SCAN_LOCK = threading.Lock()  # eşzamanlı taramaları serileştirir (F5 patlaması)
 
 
 def scan_top_5_stocks(top_n: int = 5) -> list:
@@ -373,49 +374,65 @@ def scan_top_5_stocks(top_n: int = 5) -> list:
     (download_batch), ardından her hisse için göstergeler ThreadPoolExecutor ile
     paralel hesaplanır. 500+ hisse tek tek indirmek yerine birkaç saniyede biter.
 
-    Sonuç; SCAN_CACHE_TTL (10 dk) ömründe bellekte saklanır => aynı TTL aralığında
-    /top5, /api/scan, /ototarma ve web istekleri SIFIR indirme yapar, yalnızca
-    kayıtlı kopyayı döndürür. Bu; Render'daki CPU/RAM yükünü ve CPU limitini düşürür.
+    Eşzamanlılık: _SCAN_LOCK, aynı anda birden çok yf.download çalışmasını
+    engeller (F5 patlaması). Sonuç SCAN_CACHE_TTL (10 dk) ömründe bellekte
+    saklanır; cache taze ise istekler sıfır indirmeyle döner.
     """
     global _SCAN_CACHE, _SCAN_CACHE_TS, _SCAN_CACHE_TOP_N
     now = time.time()
+    # Hızlı yol: cache taze ise lock'a girmeden döndür (F5'te sıfır bek).
     if _SCAN_CACHE is not None and _SCAN_CACHE_TOP_N == top_n \
             and (now - _SCAN_CACHE_TS) < SCAN_CACHE_TTL:
         return [dict(a) for a in _SCAN_CACHE]  # çağıran mutasyondan korunmuş kopya
 
-    tickers = get_bist_tickers()
-    batch = download_batch(tickers)
-    if batch is None:
-        return []
+    # Tek kritik bölge: indirme + hesap + cache yazma, lock altında.
+    with _SCAN_LOCK:
+        now = time.time()
+        if _SCAN_CACHE is not None and _SCAN_CACHE_TOP_N == top_n \
+                and (now - _SCAN_CACHE_TS) < SCAN_CACHE_TTL:
+            return [dict(a) for a in _SCAN_CACHE]  # beklerken biri tazelemiş
 
-    results = []
-    futures = {}
-    with ThreadPoolExecutor(max_workers=4) as pool:  # Render shared-CPU'ya uyumlu
-        for sym in tickers:
-            if isinstance(batch.columns, pd.MultiIndex):
-                sub = batch[sym] if sym in batch.columns.get_level_values(0) else None
-            else:  # tek hisse düşerse
-                sub = batch
-            if sub is None or sub.empty:
-                continue
-            futures[pool.submit(_compute_analysis, sym, sub)] = sym
-        for fut in as_completed(futures):
-            try:
-                a = fut.result()
-            except Exception:
-                continue  # tek hisse hatası tüm taramayı durdurmaz
-            if a is None:
-                continue
-            a["score"] = score_stock(a)
-            results.append(a)
+        tickers = get_bist_tickers()
+        try:
+            batch = download_batch(tickers)
+        except Exception:
+            # Yahoo rate-limit / Invalid Crumb / ağ hatası: worker çökmesin;
+            # varsa bayat cache, yoksa boş liste döndür.
+            if _SCAN_CACHE is not None and _SCAN_CACHE_TOP_N == top_n:
+                return [dict(a) for a in _SCAN_CACHE]
+            return []
+        if batch is None:
+            if _SCAN_CACHE is not None and _SCAN_CACHE_TOP_N == top_n:
+                return [dict(a) for a in _SCAN_CACHE]
+            return []
 
-    results.sort(key=lambda x: x["score"], reverse=True)
-    top = results[:top_n]
-    _SCAN_CACHE = [dict(a) for a in top]
-    _SCAN_CACHE_TS = now
-    _SCAN_CACHE_TOP_N = top_n
-    return [dict(a) for a in _SCAN_CACHE]
+        results = []
+        futures = {}
+        with ThreadPoolExecutor(max_workers=4) as pool:  # Render shared-CPU'ya uyumlu
+            for sym in tickers:
+                if isinstance(batch.columns, pd.MultiIndex):
+                    sub = batch[sym] if sym in batch.columns.get_level_values(0) else None
+                else:  # tek hisse düşerse
+                    sub = batch
+                if sub is None or sub.empty:
+                    continue
+                futures[pool.submit(_compute_analysis, sym, sub)] = sym
+            for fut in as_completed(futures):
+                try:
+                    a = fut.result()
+                except Exception:
+                    continue  # tek hisse hatası tüm taramayı durdurmaz
+                if a is None:
+                    continue
+                a["score"] = score_stock(a)
+                results.append(a)
 
+        results.sort(key=lambda x: x["score"], reverse=True)
+        top = results[:top_n]
+        _SCAN_CACHE = [dict(a) for a in top]
+        _SCAN_CACHE_TS = now
+        _SCAN_CACHE_TOP_N = top_n
+        return [dict(a) for a in _SCAN_CACHE]
 
 # =============================================================================
 # 3) PORTFÖY HESAPLAMA
@@ -447,10 +464,17 @@ def status():
 
 @app.route("/api/scan", methods=["GET"])
 def api_scan():
+    """Top 5 momentum listesi. YF hata/rate-limit durumunda worker asla
+    çökmez: scan() içinde bayat cache'e düşer; burada ek bir güvenlik ağı."""
     try:
         top = scan_top_5_stocks()
-    except Exception as e:  # pragma: no cover
-        return jsonify({"error": str(e)}), 500
+    except Exception as e:  # pragma: no cover — son çare (html'dan önce)
+        # Bilinen YF hatalarını "yumuşak" hata olarak işaretle; worker'a ölümü yok.
+        name = type(e).__name__
+        if "RateLimit" in name or "Crumb" in name or "InvalidIncompleteData" in name:
+            return jsonify({"error": "yfinance geçici olarak yanıt vermiyor",
+                            "reason": name, "stale": True}), 503
+        return jsonify({"error": "tarama başarısız", "reason": name}), 500
     return jsonify({"count": len(top), "results": top})
 
 
