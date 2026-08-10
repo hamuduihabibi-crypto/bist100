@@ -221,11 +221,25 @@ def fetch_data(symbol: str) -> tuple:
     # --- Güvenli yedek: İş Yatırım API'si (isyatirimhisse) ---
     try:
         import datetime as _dt
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import TimeoutError as _FutTimeout
         from isyatirimhisse import fetch_stock_data
         code = symbol.replace(".IS", "").strip()
         end = _dt.date.today()
         start = end - _dt.timedelta(days=200)
-        raw = fetch_stock_data(code, start.strftime("%d-%m-%Y"), end.strftime("%d-%m-%Y"))
+        # Ağ çağrısı 15s ile sınırlanır: İş Yatırım IP'yi engeller/takılırsa
+        # Gunicorn 120s'yi aşan block olusmaz; worker çökmez, yumuşak döner.
+        raw = None
+        _pool = ThreadPoolExecutor(max_workers=1)  # with kulanma: __exit__->wait=True
+        try:
+            _fut = _pool.submit(fetch_stock_data,
+                                code, start.strftime("%d-%m-%Y"), end.strftime("%d-%m-%Y"))
+            try:
+                raw = _fut.result(timeout=15)
+            except _FutTimeout:
+                return None, "İş Yatırım"  # yavaş/takılı sunucu -> yumuşak hata
+        finally:
+            _pool.shutdown(wait=False)  # takılı thread'i bekleme
         if raw is None or raw.empty:
             return None, "İş Yatırım"
         raw = raw[~raw["HGDG_TARIH"].isna()].copy()
