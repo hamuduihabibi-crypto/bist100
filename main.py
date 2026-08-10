@@ -277,7 +277,7 @@ def fetch_data(symbol: str) -> tuple:
         return None, "İş Yatırım"
 
 
-def download_batch(symbols: list, chunk_size: int = 40) -> Optional[pd.DataFrame]:
+def download_batch(symbols: list, chunk_size: int = 40, period: str = "3mo") -> Optional[pd.DataFrame]:
     """BIST listesini PARÇALI (chunked) yf.download çağrılarıyla indirir.
 
     278 hisselik evren tek dev yf.download yerine `chunk_size` (varsayılan 40)
@@ -296,7 +296,7 @@ def download_batch(symbols: list, chunk_size: int = 40) -> Optional[pd.DataFrame
         piece = symbols[start:start + chunk_size]
         try:
             df = yf.download(
-                piece, period="3mo", interval="1d",
+                piece, period=period, interval="1d",
                                 progress=False, auto_adjust=True, threads=True,
                 group_by="ticker", timeout=20,
             )
@@ -770,6 +770,303 @@ def fmt_stock_line(a: dict, show_score=False) -> str:
     )
 
 
+# =============================================================================
+# 5b) TRADEKING V6: İZLEME LİSTESİ + SİNYAL MOTORU (BIST-uyarlı)
+# =============================================================================
+# btcv6'dan (EMA pullback + ATR risk/ödül + state machine cooldown + trend
+# filtresi) esinlenerek, BIST günlük bar + kullanıcı bazlı watchlist yapısına
+# uyarlandı. Birebir kopyalanmadı — her kullanıcının kendi izleme listesi,
+# hisse başına maliyet/state/cooldown, batch indirme ve kural tabanlı sinyal.
+# -----------------------------------------------------------------------------
+WATCHLIST_FILE = os.getenv("WATCHLIST_FILE", "watchlists.json")
+_WATCHLIST_LOCK = threading.Lock()
+
+# sinyal seviyeleri (btcv6 riskManagement'tan uyarlanmış sabitler)
+V6_ATR_STOP_MULT = 1.5     # Stop = Close - (1.5 * ATR)
+V6_ATR_TP_MULT = 2.0       # TP1  = Close + (2.0 * ATR)
+V6_PULLBACK_PCT = 0.01     # EMA8/13'e ±%1 yakınlık
+V6_MAX_RSI = 60.0          # alımda RSI < 60
+V6_COOLDOWN_START = 6      # sinyal sonrası 6 tik (30dk x6 = 3 saat) tekrarlamaz
+
+
+def _load_watchlists() -> dict:
+    """watchlists.json okur (thread-safe). {chat_id_str: {SYM: {...}}}"""
+    with _WATCHLIST_LOCK:
+        if not os.path.isfile(WATCHLIST_FILE):
+            return {}
+        try:
+            import json
+            with open(WATCHLIST_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            print(f"[!] watchlists.json okunamadı: {e}")
+            return {}
+
+
+def _save_watchlists(data: dict):
+    """watchlists.json atomik yazar (tmp + os.replace, thread-safe)."""
+    with _WATCHLIST_LOCK:
+        try:
+            import json
+            tmp = WATCHLIST_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp, WATCHLIST_FILE)  # atomik: yarım dosya oluşmaz
+        except Exception as e:
+            print(f"[!] watchlists.json yazılamadı: {e}")
+
+
+def add_to_watchlist(chat_id, symbol: str, cost=None) -> bool:
+    """Kullanıcı izleme listesine hisse ekler (V6 initial state: FLAT)."""
+    data = _load_watchlists(); cid = str(chat_id)
+    data.setdefault(cid, {})
+    data[cid][symbol] = {
+        "symbol": symbol,
+        "cost": cost,
+        "state": "FLAT",
+        "cooldown_counter": 0,
+        "added_at": _now_tr_str().strftime("%Y-%m-%d %H:%M"),
+    }
+    _save_watchlists(data)
+    return True
+
+
+def remove_from_watchlist(chat_id, symbol: str) -> bool:
+    """Kullanıcı izleme listesinden hisse çıkarır."""
+    data = _load_watchlists(); cid = str(chat_id)
+    if cid in data and symbol in data[cid]:
+        del data[cid][symbol]
+        if not data[cid]:
+            del data[cid]
+        _save_watchlists(data)
+        return True
+    return False
+
+
+def parse_watchlist_input(text: str):
+    """'THYAO' veya 'THYAO 285.50' -> (symbol, cost); geçersizse None."""
+    parts = (text or "").strip().split()
+    if not parts:
+        return None
+    sym = parts[0].upper()
+    if not sym.endswith(".IS"):
+        sym += ".IS"
+    cost = None
+    if len(parts) > 1:
+        try:
+            cost = float(parts[1].replace(",", "."))
+        except ValueError:
+            cost = None
+    return sym, cost
+
+
+def unique_watchlist_symbols() -> list:
+    """Tüm kullanıcıların izleme listelerindeki benzersiz hisse kodları."""
+    data = _load_watchlists(); out = []
+    for cid, d in data.items():
+        for sym in d:
+            if sym not in out:
+                out.append(sym)
+    return out
+
+
+def _v6_trend(df) -> str:
+    """Uzun vadeli trend: EMA50 > EMA200 -> 'YUKSELEN'; altı -> 'DUSEN'."""
+    if df is None or len(df) < 210:
+        return "YETERSIZ"
+    try:
+        close = df["Close"].astype(float)
+        ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1])
+        ema200 = float(close.ewm(span=200, adjust=False).mean().iloc[-1])
+        return "YUKSELEN" if ema50 > ema200 else "DUSEN"
+    except Exception:
+        return "YETERSIZ"
+
+
+def _v6_analyze(df):
+    """V6 göstergelerini tek veri çerçevesinden hesaplar (dict)."""
+    if df is None or df.empty or len(df) < 60:
+        return None
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df.copy(); df.columns = df.columns.get_level_values(0)
+    close = df["Close"].astype(float); high = df["High"].astype(float)
+    low = df["Low"].astype(float)
+    price = float(close.iloc[-1])
+    try:
+        atr = float(ta.atr(high, low, close, length=14).iloc[-1])
+    except Exception:
+        atr = float((high.iloc[-1] - low.iloc[-1]))
+    rsi = float(ta.rsi(close, length=14).iloc[-1])
+    ema8 = float(close.ewm(span=8, adjust=False).mean().iloc[-1])
+    ema13 = float(close.ewm(span=13, adjust=False).mean().iloc[-1])
+    ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1])
+    hist = 0.0
+    try:
+        m = ta.macd(close, fast=12, slow=26, signal=9)
+        hist = float((m["MACD_12_26_9"] - m["MACDs_12_26_9"]).iloc[-1])
+    except Exception:
+        hist = 0.0
+    stop = price - (V6_ATR_STOP_MULT * atr)
+    tp = price + (V6_ATR_TP_MULT * atr)
+    return {
+        "price": price, "atr": atr, "rsi": rsi,
+        "ema8": ema8, "ema13": ema13, "ema50": ema50,
+        "macd_hist": hist, "atr_stop": stop, "atr_tp": tp,
+        "trend": _v6_trend(df),
+    }
+
+
+def check_watchlist_signals():
+    """TÜM kullanıcı watchlist'lerini tarar (bench batch; state machine).
+
+    Dönüş: {chat_id_str: [(symbol, sinyal_dict), ...]} — gönderici (scheduler)
+    Telegram mesajına çevirir. Sinyal alan hisse COOLDOWN'a girer; sayaç her
+    koşuda 1 azalır, 0 olunca FLAT (3 saatte aynı alarm tekrarlamaz).
+    """
+    syms = unique_watchlist_symbols()
+    if not syms:
+        return {}
+    # Batch indirme: tüm benzersiz kodlar TEK download_batch (1y -> EMA200)
+    batch = None
+    try:
+        batch = download_batch(syms, period="1y")
+    except Exception:
+        batch = None
+
+    alerts = {}
+    data = _load_watchlists()
+    for cid, holdings in data.items():
+        for sym, rec in holdings.items():
+            sig = _evaluate_symbol(sym, rec, batch)
+            if sig:
+                alerts.setdefault(cid, []).append((sym, sig))
+    return alerts
+
+
+def _v6_decision(a, cost):
+    """Saf sinyal kararı (btcv6 StrategyEngine tarzı, BIST-uyarlı).
+
+    a: _v6_analyze çıktısı. Döner: ('AL'|'STOP'|'KAR_AL'|None, gerekçe).
+    Sıralama: önce Stop/KarAl (fiyat risk seviyesinin dışında), sonra AL/pullback.
+    """
+    if a is None:
+        return None, "yetersiz veri"
+    price = a["price"]
+    # Stop/KarAl bandı: tek maliyet için maliyet±%3 ile ATR seviyeleri birleştirilir
+    stop_band = min(cost * 0.97, a["atr_stop"]) if cost else a["atr_stop"]
+    tp_band = max(cost * 1.03, a["atr_tp"]) if cost else a["atr_tp"]
+    if price <= stop_band:
+        return "STOP", "Fiyat durdurma seviyesinin altına düştü"
+    if price >= tp_band:
+        return "KAR_AL", "Fiyat kâr hedefi ATR TP1 seviyesine ulaştı"
+    # AL / PULLBACK: yalnızca yükselen trend + pullback + RSI<60 + MACD hist>0
+    if a["trend"] != "YUKSELEN":
+        return None, "trend yükselen değil"
+    near8 = abs(price - a["ema8"]) / a["ema8"] <= V6_PULLBACK_PCT
+    near13 = abs(price - a["ema13"]) / a["ema13"] <= V6_PULLBACK_PCT
+    if not (near8 or near13):
+        return None, "fiyat EMA8/13 destek bölgesinde değil"
+    if a["rsi"] >= V6_MAX_RSI:
+        return None, "RSI aşırı yüksek"
+    if a["macd_hist"] <= 0:
+        return None, "MACD histogram pozitif değil"
+    return "AL", "Yükselen trendde EMA desteğinden tepki alındı"
+
+
+def _evaluate_symbol(sym, rec, batch):
+    """Tek hisse için V6 sinyal üretimi + state machine/cooldown güncelle."""
+    if rec.get("state") == "COOLDOWN":
+        # her 30dk tikte sayaç 1 azalt; 0 olunca FLAT (tekrar alım serbest)
+        rec["cooldown_counter"] = max(0, rec.get("cooldown_counter", 1) - 1)
+        if rec["cooldown_counter"] <= 0:
+            rec["state"] = "FLAT"
+        _persist_rec(rec)
+        return None
+
+    sub = None
+    if batch is not None and not batch.empty:
+        try:
+            if isinstance(batch.columns, pd.MultiIndex):
+                sub = batch[sym] if sym in batch.columns.get_level_values(0) else None
+            else:
+                sub = batch
+        except Exception:
+            sub = None
+        if sub is not None and sub.empty:
+            sub = None
+    if sub is None:
+        # gerekirse tek indirme (batch'e girememişse) — sinyal ağ erişimine düşebilir
+        df, _src = fetch_data(sym)
+        sub = df
+    a = _v6_analyze(sub)
+    if a is None:
+        return None
+    cost = rec.get("cost")
+    kind, reason = _v6_decision(a, cost)
+    if kind is None:
+        return None
+    # state machine: AL sinyali hisseyi COOLDOWN'a alır (3 saat tekrarlamaz)
+    if kind == "AL":
+        rec["state"] = "COOLDOWN"
+        rec["cooldown_counter"] = V6_COOLDOWN_START
+        _persist_rec(rec)
+    return _signal(sym, kind, a, cost, reason)
+
+
+def _signal(sym, kind, a, cost, reason):
+    """V6 sinyal dict'i (state/cooldown, _evaluate_symbol tarafından yönetilir)."""
+    return {
+        "symbol": sym, "kind": kind, "price": a["price"],
+        "rsi": a["rsi"], "atr": a["atr"], "atr_stop": a["atr_stop"],
+        "atr_tp": a["atr_tp"], "trend": a["trend"], "reason": reason,
+        "cost": cost,
+    }
+
+
+def _persist_rec(rec):
+    """Değişen state/counter'ı diske geri yazar (sembol bazlı eşleme).
+
+    Not: _load_watchlists her çağrıda JSON'dan TAZE dict üretir; bu yüzden
+    referans eşitliği (r is rec) asla tutmaz. Sembol adıyla eşleşip ilgili
+    kaydın state/counter alanlarını güncelleriz.
+    """
+    sym = rec.get("symbol")
+    if not sym:
+        return
+    data = _load_watchlists()
+    changed = False
+    for cid, d in data.items():
+        if sym in d:
+            d[sym]["state"] = rec.get("state", "FLAT")
+            d[sym]["cooldown_counter"] = rec.get("cooldown_counter", 0)
+            changed = True
+    if changed:
+        _save_watchlists(data)
+
+
+def fmt_watchlist_price(rec, a):
+    """Etkileşimli /watchlist satırı: sembol + fiyat + maliyet bazlı % kar/zarar."""
+    if a is None:
+        return f"<b>{rec['symbol']}</b> — veri yok"
+    price = a["price"]
+    cost = rec.get("cost")
+    tag = ""
+    if cost:
+        pnl = (price - cost) / cost * 100
+        emoji = "🟢" if pnl >= 0 else "🔴"
+        tag = f" | Maliyet {cost:,.2f} ₺ 👉 {emoji} %{pnl:+.2f}"
+    return (f"<b>{rec['symbol'].replace('.IS','')}</b> — "
+            f"<code>{price:,.2f} ₺</code>{tag} | 🧍 {rec.get('state','FLAT')}")
+
+
+def _watchlist_price(sym):
+    """Tek hisse için (display satırı) güncel fiyat + göstergeler."""
+    sub, _src = fetch_data(sym)
+    return _v6_analyze(sub)
+
+
+
 def start_bot():
     """Telegram botunu bir daemon thread üzerinde başlatır (idempotent)."""
     global BOT, SCHEDULER, _BOT_STARTED
@@ -790,9 +1087,9 @@ def start_bot():
     def cmd_start(update, context):
         from telegram import ReplyKeyboardMarkup
         kb = ReplyKeyboardMarkup([
-            ["🎯 Top 5 Hisse", "💰 Portföy Planı"],
-            ["⚙️ Otomatik Tarama", "ℹ️ Bilgi & Yardım"],
-            ["🔍 Hisse Sorgu"],
+            ["🎯 Top 5 Hisse", "⭐ İzleme Listem"],
+            ["💰 Portföy Planı", "⚙️ Otomatik Tarama"],
+            ["ℹ️ Bilgi & Yardım"],
         ], resize_keyboard=True)
         update.message.reply_text(
             "<b>🎯 BIST Trading Bot'a hoş geldiniz!</b>\n\n"
@@ -810,9 +1107,9 @@ def start_bot():
     def cmd_bilgi(update, context):
         from telegram import ReplyKeyboardMarkup
         kb = ReplyKeyboardMarkup([
-            ["🎯 Top 5 Hisse", "💰 Portföy Planı"],
-            ["⚙️ Otomatik Tarama", "ℹ️ Bilgi & Yardım"],
-            ["🔍 Hisse Sorgu"],
+            ["🎯 Top 5 Hisse", "⭐ İzleme Listem"],
+            ["💰 Portföy Planı", "⚙️ Otomatik Tarama"],
+            ["ℹ️ Bilgi & Yardım"],
         ], resize_keyboard=True)
         update.message.reply_text(
             "<b>🧭 Kullanım Kılavuzu</b>\n\n"
@@ -912,6 +1209,65 @@ def start_bot():
             "(Örn: <code>THYAO</code>, <code>GARAN</code>):",
             reply_markup=ForceReply(selective=True), parse_mode="HTML")
 
+    # --- /watchlist (TradeKing V6: interaktif izleme listesi) ---
+    def cmd_watchlist(update, context):
+        cid = update.effective_chat.id
+        if context.args:
+            # /watchlist THYAO [maliyet] -> dogrudan ekle
+            parsed = parse_watchlist_input(" ".join(context.args))
+            if parsed:
+                sym, cost = parsed
+                add_to_watchlist(cid, sym, cost)
+                update.message.reply_text(
+                    f"⭐ <b>İzleme listesine eklendi:</b> <code>{sym}</code>"
+                    + (f" ({cost:,.2f} ₺ maliyet)" if cost else ""),
+                    parse_mode="HTML")
+            else:
+                update.message.reply_text("Geçersiz kod. Örn: <code>/watchlist THYAO 285.50</code>",
+                                          parse_mode="HTML")
+            return
+        holdings = _load_watchlists().get(str(cid), {})
+        if not holdings:
+            # Boş liste -> ForceReply ile ekleme istemi
+            context.user_data["awaiting_watchlist"] = True
+            from telegram import ForceReply
+            update.message.reply_text(
+                "⭐ <b>İzleme Listesi</b>\n\n"
+                "Listeniz henüz boş. Eklemek istediğiniz hisse kodunu ve varsa "
+                "maliyetinizi yazın (Örn: <code>THYAO</code> veya <code>THYAO 285.50</code>):",
+                reply_markup=ForceReply(selective=True), parse_mode="HTML")
+            return
+        # Dolu liste -> takip edilen hisseler + güncel fiyat + kar/zarar + `/sil_`
+        lines = []
+        for sym, rec in holdings.items():
+            a = _watchlist_price(sym)
+            lines.append(fmt_watchlist_price(rec, a) +
+                         f"\n   <code>/sil_{sym.replace('.IS','')}</code>")
+        msg = "⭐ <b>İzleme Listesi</b>\n\n" + "\n".join(lines)
+        msg += "\n\n<i>Silme için hisse yanındaki komuta dokunun. Ekleme için bir kod yazın.</i>"
+        context.user_data["awaiting_watchlist"] = True
+        update.message.reply_text(msg, parse_mode="HTML")
+
+    def cmd_sil(update, context):
+        # /sil_THYAO -> hisseyi kullanicinin listesinden cikar
+        text = (update.message.text or "").strip()
+        tok = text.split()
+        if not tok:
+            return
+        raw = tok[0].replace("/sil_", "").strip()
+        if not raw:
+            return
+        sym = raw.upper()
+        if not sym.endswith(".IS"):
+            sym += ".IS"
+        ok = remove_from_watchlist(update.effective_chat.id, sym)
+        if ok:
+            update.message.reply_text(f"🗑 <b>İzleme listesinden çıkarıldı:</b> <code>{sym}</code>",
+                                      parse_mode="HTML")
+        else:
+            update.message.reply_text(f"<code>{sym}</code> izleme listenizde bulunamadı.",
+                                      parse_mode="HTML")
+
     # --- /portfoy ---
     def cmd_portfoy(update, context):
         pl = portfolio_plan()
@@ -958,30 +1314,50 @@ def start_bot():
     dp.add_handler(CommandHandler("top5", cmd_top5))
     dp.add_handler(CommandHandler("gunceltop5", cmd_gunceltop5))
     dp.add_handler(CommandHandler("sorgu", cmd_sorgu))
+    dp.add_handler(CommandHandler("watchlist", cmd_watchlist))
     dp.add_handler(CommandHandler("portfoy", cmd_portfoy))
     dp.add_handler(CommandHandler("ototarma", cmd_ototarma))
+    dp.add_handler(CommandHandler("sil", cmd_sil))
+    dp.add_handler(MessageHandler(Filters.regex(r"^/sil_[A-Za-z0-9]+"), cmd_sil))
 
     # --- ReplyKeyboard buton metinlerini ilgili komuta yönlendir ---
     def handle_button(update, context):
         text = (update.message.text or "").strip()
         btn_map = {
             "🎯 Top 5 Hisse": cmd_top5,
-            "🔍 Hisse Sorgu": cmd_sorgu,
+            "⭐ İzleme Listem": cmd_watchlist,
             "💰 Portföy Planı": cmd_portfoy,
             "⚙️ Otomatik Tarama": cmd_ototarma,
             "ℹ️ Bilgi & Yardım": cmd_bilgi,
         }
         fn = btn_map.get(text)
         if fn:
-            # Sorgu dışında bir butona geçilirse bekleyen sorgu durumunu sıfırla
+            # Bekleyen etkileşimli durumları, farklı bir butona geçilince sıfırla
             if fn is not cmd_sorgu:
                 context.user_data.pop("awaiting_sorgu", None)
+            if fn is not cmd_watchlist:
+                context.user_data.pop("awaiting_watchlist", None)
             fn(update, context)
             return
-        # Buton metni değil: kullanıcı /sorgu beklenen kodun metnini yazıyor olabilir
+        # Buton metni değil: beklenen sorgu/izleme girdisi olabilir
         if context.user_data.get("awaiting_sorgu"):
-            context.user_data["awaiting_sorgu"] = False  # durumu sıfırla
-            run_sorgu(update, context, text)             # yazılan kodu analiz et
+            context.user_data["awaiting_sorgu"] = False
+            run_sorgu(update, context, text)
+            return
+        if context.user_data.get("awaiting_watchlist"):
+            context.user_data["awaiting_watchlist"] = False
+            parsed = parse_watchlist_input(text)
+            if parsed:
+                sym, cost = parsed
+                add_to_watchlist(update.effective_chat.id, sym, cost)
+                update.message.reply_text(
+                    f"⭐ <b>İzleme listesine eklendi:</b> <code>{sym}</code>"
+                    + (f" ({cost:,.2f} ₺ maliyet)" if cost else ""),
+                    parse_mode="HTML")
+            else:
+                update.message.reply_text("Geçersiz girdi. Örn: <code>THYAO</code> veya <code>THYAO 285.50</code>",
+                                          parse_mode="HTML")
+            return
         # tanınmayan text -> sessizce yok say (bildirim verme)
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_button))
     dp.add_handler(MessageHandler(Filters.command, lambda u, c: None))
@@ -992,6 +1368,7 @@ def start_bot():
             ("top5", "En iyi 5 momentum hissesi (anında önbellek)"),
             ("gunceltop5", "Arka planda taze Top 5 taraması başlat"),
             ("sorgu", "Tek hisse analizi (ör: /sorgu GOZDE)"),
+            ("watchlist", "⭐ İzleme listem (ekle/sil/her seans sinyal)"),
             ("portfoy", "100.000 TL portföy planı"),
             ("ototarma", "Otomatik taramayı aç/kapat"),
             ("bilgi", "Kullanım kılavuzu ve strateji"),
@@ -999,6 +1376,60 @@ def start_bot():
         print("[i] Telegram komut menüsü set_my_commands ile güncellendi.")
     except Exception as e:  # pragma: no cover
         print(f"[!] set_my_commands başarısız: {e}")
+
+    # --- TradeKing V6: seans sinyal taramasi + 18:15 kapanis raporu ---
+    def send_watchlist_signal(cid, sym, sig):
+        """V6 sinyalini Telegram mesajına çevirir + kural bazlı gerekçe."""
+        code = sym.replace(".IS", "")
+        kind = sig["kind"]
+        if kind == "AL":
+            title = "🟢 AL / PULLBACK BUY"
+        elif kind == "STOP":
+            title = "⚠️ STOP"
+        else:
+            title = "🎯 KAR AL"
+        msg = (
+            f"<b>{title} — {code}</b>\n"
+            f"Fiyat: <code>{sig['price']:,.2f} ₺</code>\n"
+            f"RSI(14): <b>{sig['rsi']:.1f}</b> | Trend: {sig['trend']}\n"
+            f"ATR(14): <code>{sig['atr']:.2f}</code>\n"
+            f"İzleme Maliyeti: "
+            + (f"<code>{sig['cost']:,.2f} ₺</code>" if sig.get("cost") else "<i>yok</i>")
+            + f"\n💡 <b>Sinyal Gerekçesi:</b> {sig['reason']} "
+              f"(RSI: {sig['rsi']:.1f}, ATR Stop: {sig['atr_stop']:.2f} TL)."
+        )
+        try:
+            BOT.send_message(chat_id=int(cid), text=msg, parse_mode="HTML")
+        except Exception:
+            pass
+
+    def watchlist_signal_job():
+        """Hafta içi 10:00-18:15 arası her 30dk: tüm watchlist'leri tara + sinyal gönder."""
+        alerts = {}
+        try:
+            alerts = check_watchlist_signals()
+        except Exception as e:
+            print(f"[!] V6 sinyal taraması hatası: {e}")
+            return
+        for cid, sigs in alerts.items():
+            for sym, sig in sigs:
+                send_watchlist_signal(cid, sym, sig)
+
+    def close_report_job():
+        """Hafta içi 18:15: seans kapanış özeti (takip edilen hisselerin günlük kapanışı)."""
+        data = _load_watchlists()
+        for cid, holdings in data.items():
+            lines = []
+            for sym, rec in holdings.items():
+                a = _watchlist_price(sym)
+                lines.append(fmt_watchlist_price(rec, a))
+            if not lines:
+                continue
+            msg = "📊 <b>Seans Kapanış Raporu</b>\n\n" + "\n".join(lines)
+            try:
+                BOT.send_message(chat_id=int(cid), text=msg, parse_mode="HTML")
+            except Exception:
+                pass
 
     # --- APScheduler ile periyodik tarama (ototarma abonelerine) -------------
     def auto_scan_job():
@@ -1047,6 +1478,12 @@ def start_bot():
                           hour=9, minute=45, timezone=pytz.timezone("Europe/Istanbul"))
         SCHEDULER.add_job(precache_job, "cron", day_of_week="mon-fri",
                           hour=18, minute=30, timezone=pytz.timezone("Europe/Istanbul"))
+        # V6 seans sinyalleri: hafta içi 10:00-18:15 her 30dk
+        SCHEDULER.add_job(watchlist_signal_job, "cron", day_of_week="mon-fri",
+                          hour="10-18", minute="0,30", timezone=pytz.timezone("Europe/Istanbul"))
+        # V6 seans sonu raporu: hafta içi 18:15
+        SCHEDULER.add_job(close_report_job, "cron", day_of_week="mon-fri",
+                          hour=18, minute=15, timezone=pytz.timezone("Europe/Istanbul"))
         SCHEDULER.start()
     except Exception as e:  # pragma: no cover
         print(f"[!] Zamanlayıcı başlatılamadı: {e}")

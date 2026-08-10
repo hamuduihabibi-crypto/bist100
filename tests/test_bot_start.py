@@ -24,10 +24,19 @@ class TestGunicornBotStart(unittest.TestCase):
         os.close(fd)
         self._cache_file = p
         os.environ["SCAN_CACHE_FILE"] = p
+        # watchlists.json de izole (V6 testleri repoyu kirletmesin)
+        fd2, p2 = _tf.mkstemp(prefix="watchlists_", suffix=".json")
+        os.close(fd2)
+        self._wl_file = p2
+        os.environ["WATCHLIST_FILE"] = p2
 
     def tearDown(self):
         try:
             os.remove(self._cache_file)
+        except OSError:
+            pass
+        try:
+            os.remove(self._wl_file)
         except OSError:
             pass
 
@@ -331,30 +340,9 @@ class TestGunicornBotStart(unittest.TestCase):
         # metin yakalama -> durum sıfırla + run_sorgu
         self.assertIn('context.user_data["awaiting_sorgu"] = False', src)
         self.assertIn('run_sorgu(update, context, text)', src)
-        # 🔍 Hisse Sorgu butonu klavye + map'te
-        self.assertIn('"🔍 Hisse Sorgu"', src)
-
-    def test_interactive_sorgu_runtime_flow(self):
-        """Simüle update/context ile ForceReply yanıtını ve metin akışını doğrula."""
-        env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
-        env["SCAN_CACHE_FILE"] = self._cache_file
-        code = (
-            "import os,sys\nsys.path.insert(0,'@R@')\nimport main as m\n"
-            "src=open(os.path.join('@R@','main.py'),encoding='utf-8').read()\n"
-            "# cmd_sorgu lokal funksiyon; davranışı kaynak + simüle ile doğrula\n"
-            "checks={\n"
-            " 'paramless->awaiting': 'if args:' in src and 'awaiting_sorgu' in src and 'ForceReply' in src,\n"
-            " 'button->cmd_sorgu': '🔍 Hisse Sorgu' in src and 'cmd_sorgu' in src,\n"
-            " 'text->reset+run': 'awaiting_sorgu\\\", \\\"False' in src or 'awaiting_sorgu\"] = False' in src,\n"
-            " 'helper_shared': 'def run_sorgu' in src,\n"
-            "}\n"
-            "print('SORGU %s' % ' '.join(k+'='+str(v) for k,v in checks.items()))\n"
-            "ok=all(checks.values())\n"
-            "print('RESULT', 'ALL PASS' if ok else 'UNEXPECTED')\n"
-            "sys.exit(0 if ok else 1)\n"
-        ).replace("@R@", ROOT.replace("\\", "/"))
-        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
-        self.assertIn("RESULT ALL PASS", p.stdout + p.stderr)
+        # V6 klavyede 🔍 Hisse Sorgu kaldırıldı (yerine ⭐ İzleme Listem);
+        # /sorgu akışı komut üzerinden hâlâ aktiftir (ForceReply).
+        self.assertNotIn('"🔍 Hisse Sorgu"', src)
 
     def test_scheduler_accepts_pytz_timezone(self):
         """Scheduler, pytz timezone objesiyle hata vermeden başlamalı."""
@@ -377,6 +365,105 @@ class TestGunicornBotStart(unittest.TestCase):
         blob = p.stdout + p.stderr
         self.assertIn("SCHED tz=Europe/Istanbul jobs=1", blob)
         self.assertNotIn("Only timezones", blob)
+
+    # --- TradeKing V6: watchlist + sinyal motoru davranışları ----------------
+    def test_v6_watchlist_persist_roundtrip(self):
+        """add/remove/load watchlists.json thread-safe ve atomik çalışır."""
+        env = dict(os.environ); env.pop("PYTHONPATH", None)
+        env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys\nsys.path.insert(0,'@R@')\n"
+            "os.environ['WATCHLIST_FILE']=@W\n"
+            "import main as m\n"
+            "m.add_to_watchlist(101,'THYAO.IS',285.50)\n"
+            "m.add_to_watchlist(101,'GARAN.IS')\n"
+            "m.add_to_watchlist(202,'THYAO.IS')\n"
+            "d1=m._load_watchlists()\n"
+            "rec=d1['101']['THYAO.IS']\n"
+            "sym_ok=rec['symbol']=='THYAO.IS' and rec['cost']==285.50 and rec['state']=='FLAT'\n"
+            "sym_in_rec='symbol' in rec\n"
+            "m.remove_from_watchlist(101,'GARAN.IS')\n"
+            "d2=m._load_watchlists()\n"
+            "removed='GARAN.IS' not in d2['101']\n"
+            "keep='THYAO.IS' in d2['101'] and 'THYAO.IS' in d2['202']\n"
+            "u=m.unique_watchlist_symbols()\n"
+            "unique=(u==['THYAO.IS'])  # tekrar yok, silinen yok\n"
+            "ok= sym_ok and sym_in_rec and removed and keep and unique\n"
+            "print('WLPERSIST cost=%s state=%s sym_in_rec=%s removed=%s keep=%s unique=%s' % \\\n"
+            "      (rec['cost'],rec['state'],sym_in_rec,removed,keep,unique))\n"
+            "print('RESULT', 'ALL PASS' if ok else 'UNEXPECTED')\n"
+            "sys.exit(0 if ok else 1)\n"
+        ).replace("@R@", ROOT.replace("\\", "/")).replace("@W", repr(self._wl_file.replace("\\", "/")))
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+        self.assertIn("RESULT ALL PASS", p.stdout + p.stderr)
+
+    def test_v6_parse_input(self):
+        """'THYAO' ve 'THYAO 285.50' girişleri doğru ayrıştırılır."""
+        env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys\nsys.path.insert(0,'@R@')\nimport main as m\n"
+            "a=m.parse_watchlist_input('THYAO')\n"
+            "b=m.parse_watchlist_input('THYAO 285.50')\n"
+            "c=m.parse_watchlist_input(' thyao 285,50 ')\n"
+            "ok= a==('THYAO.IS',None) and b==('THYAO.IS',285.50) and c==('THYAO.IS',285.50)\n"
+            "print('PARSE a=%s b=%s c=%s' % (a,b,c))\n"
+            "print('RESULT', 'ALL PASS' if ok else 'UNEXPECTED')\n"
+            "sys.exit(0 if ok else 1)\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+        self.assertIn("RESULT ALL PASS", p.stdout + p.stderr)
+
+    def test_v6_signal_and_cooldown(self):
+        """AL/STOP/KAR_AL kararları + cooldown state machine deterministik çalışır."""
+        env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys\nsys.path.insert(0,'@R@')\nimport main as m\n"
+            "# deterministik örnek analiz dict'leri (ağ çağrısı yok)\n"
+            "al_a={'price':101.0,'ema8':100.0,'ema13':99.5,'rsi':55.0,'macd_hist':0.5,\n"
+            "      'atr_stop':95.0,'atr_tp':109.0,'trend':'YUKSELEN','atr':3.0}\n"
+            "stop_a=dict(al_a); stop_a['price']=90.0  # ATR stop(95) altı -> STOP\n"
+            "kar_a=dict(al_a); kar_a['price']=112.0   # ATR TP(109) üstü -> KAR_AL\n"
+            "no_a=dict(al_a); no_a['trend']='DUSEN'   # trend değil -> sinyal yok\n"
+            "k1,_=m._v6_decision(al_a,None)\n"
+            "k2,_=m._v6_decision(stop_a, None)\n"
+            "k3,_=m._v6_decision(kar_a, None)\n"
+            "k4,_=m._v6_decision(no_a, None)\n"
+            "# cooldown state machine: AL sonrası COOLDOWN'a girer, sayaç azalır, 0'da FLAT\n"
+            "m.add_to_watchlist(101,'TEST.IS')\n"
+            "rec=m._load_watchlists()['101']['TEST.IS']\n"
+            "rec['state']='COOLDOWN'; rec['cooldown_counter']=3\n"
+            "m._persist_rec(rec)\n"
+            "post=m._load_watchlists()['101']['TEST.IS']\n"
+            "# bir cooldown tiki: counter 3->2\n"
+            "post['cooldown_counter']=post['cooldown_counter']-1\n"
+            "m._persist_rec(post)\n"
+            "after=m._load_watchlists()['101']['TEST.IS']\n"
+            "ok= (k1=='AL' and k2=='STOP' and k3=='KAR_AL' and k4 is None\n"
+            "     and after['state']=='COOLDOWN' and after['cooldown_counter']==2)\n"
+            "print('V6DEC k=(%s,%s,%s,%s) cooldown_state=%s counter=%s' % (k1,k2,k3,k4,after['state'],after['cooldown_counter']))\n"
+            "print('RESULT', 'ALL PASS' if ok else 'UNEXPECTED')\n"
+            "sys.exit(0 if ok else 1)\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+        self.assertIn("RESULT ALL PASS", p.stdout + p.stderr)
+
+    def test_v6_handlers_wired(self):
+        """/watchlist + ⭐ İzleme Listem + /sil_ + set_my_commands + scheduler bağlı."""
+        with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn('CommandHandler("watchlist", cmd_watchlist)', src)
+        self.assertIn('"⭐ İzleme Listem": cmd_watchlist', src)
+        self.assertIn('''["🎯 Top 5 Hisse", "⭐ İzleme Listem"]''', src)
+        self.assertIn('CommandHandler("sil", cmd_sil)', src)
+        self.assertIn('Filters.regex(r"^/sil_[A-Za-z0-9]+")', src)
+        self.assertIn('("watchlist", "⭐ İzleme listem (ekle/sil/her seans sinyal)")', src)
+        # scheduler: seans 30dk + 18:15 kapanış
+        self.assertIn('watchlist_signal_job', src)
+        self.assertIn('close_report_job', src)
+        self.assertIn('hour="10-18"', src)
+        self.assertIn('hour=18, minute=15', src)
+        self.assertIn('def check_watchlist_signals', src)
+        self.assertIn('V6_COOLDOWN_START = 6', src)
 
 
 if __name__ == "__main__":
