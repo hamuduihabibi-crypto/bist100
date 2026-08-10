@@ -817,13 +817,25 @@ def _save_watchlists(data: dict):
             print(f"[!] watchlists.json yazılamadı: {e}")
 
 
-def add_to_watchlist(chat_id, symbol: str, cost=None) -> bool:
-    """Kullanıcı izleme listesine hisse ekler (V6 initial state: FLAT)."""
+def add_to_watchlist(chat_id, symbol: str, cost=None, lots=None, total=None) -> bool:
+    """Kullanıcı izleme listesine hisse ekler (V6 initial state: FLAT).
+
+    lots: lot adedi, total: toplam yatırım tutarı (TL). Üç değişken (maliyet/
+    lot/toplam) otomatik tutarlıdır: eksik olan diğer ikisinden hesap edilir.
+    """
     data = _load_watchlists(); cid = str(chat_id)
     data.setdefault(cid, {})
+    if cost is not None and lots is not None and total is None:
+        total = round(cost * lots, 2)          # THYAO 285.50 100 -> 28550.0
+    elif total is not None and lots is not None and cost is None:
+        cost = round(total / lots, 4) if lots else None   # 28550TL / 100lot
+    elif cost is not None and total is not None and lots is None and total > 0:
+        lots = round(total / cost, 2)          # 285.50 + 28550TL -> 100 lot
     data[cid][symbol] = {
         "symbol": symbol,
         "cost": cost,
+        "lots": lots,
+        "total_amount": total,
         "state": "FLAT",
         "cooldown_counter": 0,
         "added_at": _now_tr_str().strftime("%Y-%m-%d %H:%M"),
@@ -844,21 +856,70 @@ def remove_from_watchlist(chat_id, symbol: str) -> bool:
     return False
 
 
+def _num(x):
+    """Türkçe/İngilizce sayı -> float (TR binlik nokta/ondalık virgül veya
+    EN binlik virgül/ondalık nokta; tek ondalık ayracı '285.50' varsa ondalık sayılır)."""
+    s = str(x).strip().lower().replace("tl", "").replace("lot", "")
+    if "," in s and "." in s:
+        # en sağdaki ayraç ondalık; diğeri binlik (varsayım).
+        if s.rfind(".") > s.rfind(","):
+            s = s.replace(",", "")          # . ondalık, , binlik (1.234.56? -> 1234.56)
+        else:
+            s = s.replace(".", "").replace(",", ".")   # , ondalık, . binlik (1.234,56)
+    elif "," in s:
+        part = s.rsplit(",", 1)[1]
+        s = s.replace(",", "") if (len(part) == 3 and part.isdigit()) else s.replace(",", ".")
+    elif "." in s:
+        part = s.rsplit(".", 1)[1]
+        if len(part) == 3 and part.isdigit():
+            s = s.replace(".", "")          # 3'lü grup -> binlik (1.234 -> 1234)
+        # aksi halde '.' ondalık ayracı olarak korunur (285.50)
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def parse_watchlist_input(text: str):
-    """'THYAO' veya 'THYAO 285.50' -> (symbol, cost); geçersizse None."""
+    """Esnek girdi ayrıştırıcı -> (symbol, cost, lots, total). geçersizse None.
+
+    * `THYAO`                  -> maliyet/lot/total None
+    * `THYAO 285.50`           -> cost=285.50
+    * `THYAO 285.50 100`       -> cost=285.50, lot=100  => total=28550.0
+    * `THYAO 28550TL 100lot`   -> total=28550, lot=100  => cost=285.50
+    * `THYAO 285.50 28550TL`   -> cost=285.50, total=28550 => lot=100
+    """
     parts = (text or "").strip().split()
     if not parts:
         return None
     sym = parts[0].upper()
     if not sym.endswith(".IS"):
         sym += ".IS"
-    cost = None
-    if len(parts) > 1:
-        try:
-            cost = float(parts[1].replace(",", "."))
-        except ValueError:
-            cost = None
-    return sym, cost
+    cost = lots = total = None
+    bare = []
+    for tok in parts[1:]:
+        low = tok.strip().lower()
+        if low.endswith("lot"):
+            lots = _num(low[:-3])
+        elif low.endswith("tl"):
+            total = _num(low[:-2])
+        else:
+            v = _num(low)
+            if v is not None:
+                bare.append(v)
+    # bare değerler: ilki maliyet; varsa ikincisi lot (belirtilmemişse)
+    if bare:
+        cost = bare[0]
+        if len(bare) >= 2 and lots is None:
+            lots = bare[1]
+    # otomatik değişken hesabı (üçünden ikisi yeterli)
+    if cost is not None and lots is not None and total is None:
+        total = round(cost * lots, 2)
+    elif total is not None and lots is not None and cost is None:
+        cost = round(total / lots, 4) if lots else None
+    elif cost is not None and total is not None and lots is None and total > 0:
+        lots = round(total / cost, 2)
+    return sym, cost, lots, total
 
 
 def unique_watchlist_symbols() -> list:
@@ -1045,19 +1106,41 @@ def _persist_rec(rec):
         _save_watchlists(data)
 
 
+def _tr_num(v):
+    """TL tutarı Türkçe biçimde: binlik nokta, ondalık virgül (+/- işareti korunur)."""
+    s = f"{v:+,.2f}"
+    return s.replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 def fmt_watchlist_price(rec, a):
-    """Etkileşimli /watchlist satırı: sembol + fiyat + maliyet bazlı % kar/zarar."""
+    """Etkileşimli /watchlist satırı: sembol + fiyat + maliyet/lot + toplam yatırım
+    + güncel portföy değeri + TL bazlı net kâr/zarar (tutar ve %)."""
     if a is None:
         return f"<b>{rec['symbol']}</b> — veri yok"
+    code = rec["symbol"].replace(".IS", "")
     price = a["price"]
     cost = rec.get("cost")
-    tag = ""
+    lots = rec.get("lots")
+    total = rec.get("total_amount")
+    state = rec.get("state", "FLAT")
+    if cost and lots is not None and total:
+        # tam portföy: lot + toplam yatırım + güncel değer + TL net kâr/zarar
+        portf = price * lots
+        net = portf - total
+        pct = (net / total * 100) if total else 0.0
+        emoji = "🟢" if net >= 0 else "🔴"
+        pnl_label = "Kâr" if net >= 0 else "Zarar"
+        return (f"<b>{code}</b>\n"
+                f"   Fiyat: <code>{price:,.2f} ₺</code> | 🧍 {state}\n"
+                f"   Maliyet: <code>{cost:,.2f} ₺</code> · {lots:,.0f} lot\n"
+                f"   Yatırım: <code>{_tr_num(total)} TL</code> → Değer: <code>{_tr_num(portf)} TL</code>\n"
+                f"   Net {pnl_label}: {emoji} <code>{_tr_num(net)} TL</code> (<code>%{pct:+.2f}</code>)")
     if cost:
         pnl = (price - cost) / cost * 100
         emoji = "🟢" if pnl >= 0 else "🔴"
-        tag = f" | Maliyet {cost:,.2f} ₺ 👉 {emoji} %{pnl:+.2f}"
-    return (f"<b>{rec['symbol'].replace('.IS','')}</b> — "
-            f"<code>{price:,.2f} ₺</code>{tag} | 🧍 {rec.get('state','FLAT')}")
+        return (f"<b>{code}</b> — <code>{price:,.2f} ₺</code> "
+                f"| Maliyet {cost:,.2f} ₺ 👉 {emoji} %{pnl:+.2f} | 🧍 {state}")
+    return f"<b>{code}</b> — <code>{price:,.2f} ₺</code> | 🧍 {state}"
 
 
 def _watchlist_price(sym):
@@ -1213,17 +1296,14 @@ def start_bot():
     def cmd_watchlist(update, context):
         cid = update.effective_chat.id
         if context.args:
-            # /watchlist THYAO [maliyet] -> dogrudan ekle
+            # /watchlist THYAO 285.50 100 -> dogrudan ekle
             parsed = parse_watchlist_input(" ".join(context.args))
             if parsed:
-                sym, cost = parsed
-                add_to_watchlist(cid, sym, cost)
-                update.message.reply_text(
-                    f"⭐ <b>İzleme listesine eklendi:</b> <code>{sym}</code>"
-                    + (f" ({cost:,.2f} ₺ maliyet)" if cost else ""),
-                    parse_mode="HTML")
+                sym, cost, lots, total = parsed
+                add_to_watchlist(cid, sym, cost, lots, total)
+                _say_added(update, sym, cost, lots, total)
             else:
-                update.message.reply_text("Geçersiz kod. Örn: <code>/watchlist THYAO 285.50</code>",
+                update.message.reply_text("Geçersiz kod. Örn: <code>/watchlist THYAO 285.50 100</code>",
                                           parse_mode="HTML")
             return
         holdings = _load_watchlists().get(str(cid), {})
@@ -1232,9 +1312,10 @@ def start_bot():
             context.user_data["awaiting_watchlist"] = True
             from telegram import ForceReply
             update.message.reply_text(
-                "⭐ <b>İzleme Listesi</b>\n\n"
-                "Listeniz henüz boş. Eklemek istediğiniz hisse kodunu ve varsa "
-                "maliyetinizi yazın (Örn: <code>THYAO</code> veya <code>THYAO 285.50</code>):",
+                "⭐ <b>İzleme Listesi & Portföy</b>\n\n"
+                "Eklemek istediğiniz hisse kodunu, maliyetinizi ve lot adedinizi yazın "
+                "(Örn: <code>THYAO</code>, <code>THYAO 285.50</code> veya "
+                "<code>THYAO 285.50 100</code>):",
                 reply_markup=ForceReply(selective=True), parse_mode="HTML")
             return
         # Dolu liste -> takip edilen hisseler + güncel fiyat + kar/zarar + `/sil_`
@@ -1247,6 +1328,20 @@ def start_bot():
         msg += "\n\n<i>Silme için hisse yanındaki komuta dokunun. Ekleme için bir kod yazın.</i>"
         context.user_data["awaiting_watchlist"] = True
         update.message.reply_text(msg, parse_mode="HTML")
+
+    def _say_added(update, sym, cost, lots, total):
+        """Ekleme onay mesajı (maliyet/lot/total değerlerini özetler)."""
+        bits = []
+        if cost is not None:
+            bits.append(f"maliyet <code>{cost:,.2f} ₺</code>")
+        if lots is not None:
+            bits.append(f"<b>{lots:,.0f}</b> lot")
+        if total is not None:
+            bits.append(f"toplam <code>{_tr_num(total)} TL</code>")
+        extra = f" ({', '.join(bits)})" if bits else ""
+        update.message.reply_text(
+            f"⭐ <b>İzleme listesine eklendi:</b> <code>{sym}</code>{extra}",
+            parse_mode="HTML")
 
     def cmd_sil(update, context):
         # /sil_THYAO -> hisseyi kullanicinin listesinden cikar
@@ -1348,14 +1443,11 @@ def start_bot():
             context.user_data["awaiting_watchlist"] = False
             parsed = parse_watchlist_input(text)
             if parsed:
-                sym, cost = parsed
-                add_to_watchlist(update.effective_chat.id, sym, cost)
-                update.message.reply_text(
-                    f"⭐ <b>İzleme listesine eklendi:</b> <code>{sym}</code>"
-                    + (f" ({cost:,.2f} ₺ maliyet)" if cost else ""),
-                    parse_mode="HTML")
+                sym, cost, lots, total = parsed
+                add_to_watchlist(update.effective_chat.id, sym, cost, lots, total)
+                _say_added(update, sym, cost, lots, total)
             else:
-                update.message.reply_text("Geçersiz girdi. Örn: <code>THYAO</code> veya <code>THYAO 285.50</code>",
+                update.message.reply_text("Geçersiz girdi. Örn: <code>THYAO 285.50 100</code>",
                                           parse_mode="HTML")
             return
         # tanınmayan text -> sessizce yok say (bildirim verme)

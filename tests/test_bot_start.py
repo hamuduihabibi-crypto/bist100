@@ -398,15 +398,48 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertIn("RESULT ALL PASS", p.stdout + p.stderr)
 
     def test_v6_parse_input(self):
-        """'THYAO' ve 'THYAO 285.50' girişleri doğru ayrıştırılır."""
+        """Akıllı ayrıştırıcı: THYAO / THYAO 285.50 / lot / TL kombinasyonları."""
         env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
         code = (
             "import os,sys\nsys.path.insert(0,'@R@')\nimport main as m\n"
             "a=m.parse_watchlist_input('THYAO')\n"
             "b=m.parse_watchlist_input('THYAO 285.50')\n"
-            "c=m.parse_watchlist_input(' thyao 285,50 ')\n"
-            "ok= a==('THYAO.IS',None) and b==('THYAO.IS',285.50) and c==('THYAO.IS',285.50)\n"
-            "print('PARSE a=%s b=%s c=%s' % (a,b,c))\n"
+            "c=m.parse_watchlist_input(' thyao 285,50 100 ')\n"
+            "d=m.parse_watchlist_input('THYAO 28550TL 100lot')\n"
+            "e=m.parse_watchlist_input('THYAO 285.50 28550TL')\n"
+            "ok= (a==('THYAO.IS',None,None,None)\n"
+            "  and b==('THYAO.IS',285.50,None,None)\n"
+            "  and c==('THYAO.IS',285.50,100,28550.0)\n"
+            "  and d==('THYAO.IS',285.5,100,28550.0)\n"
+            "  and e==('THYAO.IS',285.50,100,28550.0))\n"
+            "print('PARSE c=%s d=%s e=%s' % (c,d,e))\n"
+            "print('RESULT', 'ALL PASS' if ok else 'UNEXPECTED')\n"
+            "sys.exit(0 if ok else 1)\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+        self.assertIn("RESULT ALL PASS", p.stdout + p.stderr)
+
+    def test_v6_lots_total_persist_and_display(self):
+        """add_to_watchlist lots/total auto-calc + fmt portföy (yatırım/kâr-zarar)."""
+        env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
+        code = (
+            "import os,sys\nsys.path.insert(0,'@R@')\nimport main as m\n"
+            "# 1) persist + otomatik total hesabı\n"
+            "m.add_to_watchlist(101,'THYAO.IS',285.50,100)  # cost+lot -> total\n"
+            "rec=m._load_watchlists()['101']['THYAO.IS']\n"
+            "persist_ok= rec['lots']==100 and rec['total_amount']==28550.0 and rec['cost']==285.50\n"
+            "# 2) yalnız total+lot -> maliyet infer\n"
+            "m.add_to_watchlist(202,'GARAN.IS',None,100,28550.0)\n"
+            "rec2=m._load_watchlists()['202']['GARAN.IS']\n"
+            "infer_ok= abs(rec2['cost']-285.50)<1e-6 and rec2['total_amount']==28550.0 and rec2['lots']==100\n"
+            "# 3) portföy görünümü: fiyat 300 -> 100 lot, yatırım 28550, net +1450 TL\n"
+            "a={'price':300.0,'ema8':295.0,'ema13':293.0,'rsi':52.0,'macd_hist':0.4,\n"
+            "   'atr_stop':280.0,'atr_tp':320.0,'trend':'YUKSELEN','atr':9.0}\n"
+            "line=m.fmt_watchlist_price(rec, a)\n"
+            "disp_ok= ('100 lot' in line and '+1.450,00 TL' in line)  # _tr_num('.') binlik\n"
+            "ok= persist_ok and infer_ok and disp_ok\n"
+            "print('LOTS persist=%s infer=%s disp=[%s] netline=%s' % (persist_ok,infer_ok,a is not None,\n"
+            "       [l for l in line.splitlines() if 'Net' in l]))\n"
             "print('RESULT', 'ALL PASS' if ok else 'UNEXPECTED')\n"
             "sys.exit(0 if ok else 1)\n"
         ).replace("@R@", ROOT.replace("\\", "/"))
