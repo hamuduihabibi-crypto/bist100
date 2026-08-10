@@ -359,9 +359,11 @@ def score_stock(a: dict) -> float:
     return round(score, 2)
 
 
-# --- In-memory scan cache (10 dk) -------------------------------------------
+# --- In-memory scan cache (1 saat) --------------------------------------------
 # Aynı TTL aralığında yapılan tüm tarama istekleri yeniden indirme YAPMAZ.
-SCAN_CACHE_TTL = 600          # tarama sonucunun ömrü (saniye)
+SCAN_CACHE_TTL = 3600          # tarama sonucunun ömrü (saniye). 10dk üstüne çıkarıldı:
+                              # free tier'da tek 340-hisse taraması 15+ dk sürebildiği için
+                              # (TTL < tarama süresi olursa /api/scan ASLA 200 dönmez).
 _SCAN_CACHE = None            # son tarama sonucu (dict listesi)
 _SCAN_CACHE_TS = 0.0          # son taramanın zaman damgası
 _SCAN_CACHE_TOP_N = None      # cache'lenen top_n (farklı N için cache geçersiz)
