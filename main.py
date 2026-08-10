@@ -792,6 +792,7 @@ def start_bot():
         kb = ReplyKeyboardMarkup([
             ["🎯 Top 5 Hisse", "💰 Portföy Planı"],
             ["⚙️ Otomatik Tarama", "ℹ️ Bilgi & Yardım"],
+            ["🔍 Hisse Sorgu"],
         ], resize_keyboard=True)
         update.message.reply_text(
             "<b>🎯 BIST Trading Bot'a hoş geldiniz!</b>\n\n"
@@ -811,6 +812,7 @@ def start_bot():
         kb = ReplyKeyboardMarkup([
             ["🎯 Top 5 Hisse", "💰 Portföy Planı"],
             ["⚙️ Otomatik Tarama", "ℹ️ Bilgi & Yardım"],
+            ["🔍 Hisse Sorgu"],
         ], resize_keyboard=True)
         update.message.reply_text(
             "<b>🧭 Kullanım Kılavuzu</b>\n\n"
@@ -865,13 +867,10 @@ def start_bot():
         _ensure_scan_running()
 
     # --- /sorgu ---
-    def cmd_sorgu(update, context):
-        args = context.args
-        if not args:
-            update.message.reply_text("Kullanım: <code>/sorgu KOD</code> (Ör: <code>/sorgu GOZDE</code>)",
-                                      parse_mode="HTML")
-            return
-        symbol = args[0].upper()
+    def run_sorgu(update, context, raw_symbol):
+        """Verilen kod için analiz üretip kullanıcıya gönderir (parametre veya
+        ForceReply akışından gelen metin için ortak akış)."""
+        symbol = raw_symbol.strip().upper()
         if not symbol.endswith(".IS"):
             symbol += ".IS"
         a = analyze_single_stock(symbol)
@@ -898,6 +897,20 @@ def start_bot():
             f"\n📊 <b>Kaynak:</b> {a['data_source']}"
         )
         update.message.reply_text(msg, parse_mode="HTML")
+
+    def cmd_sorgu(update, context):
+        args = context.args
+        if args:
+            run_sorgu(update, context, args[0])  # parametre verildi -> doğrudan analiz
+            return
+        # Parametre yok / 🔍 Hisse Sorgu butonu -> etkileşimli sorgu (ForceReply)
+        context.user_data["awaiting_sorgu"] = True
+        from telegram import ForceReply
+        update.message.reply_text(
+            "🔍 <b>Hisse Analizi</b>\n\n"
+            "Lütfen incelemek istediğiniz hisse kodunu yazın "
+            "(Örn: <code>THYAO</code>, <code>GARAN</code>):",
+            reply_markup=ForceReply(selective=True), parse_mode="HTML")
 
     # --- /portfoy ---
     def cmd_portfoy(update, context):
@@ -953,13 +966,22 @@ def start_bot():
         text = (update.message.text or "").strip()
         btn_map = {
             "🎯 Top 5 Hisse": cmd_top5,
+            "🔍 Hisse Sorgu": cmd_sorgu,
             "💰 Portföy Planı": cmd_portfoy,
             "⚙️ Otomatik Tarama": cmd_ototarma,
             "ℹ️ Bilgi & Yardım": cmd_bilgi,
         }
         fn = btn_map.get(text)
         if fn:
+            # Sorgu dışında bir butona geçilirse bekleyen sorgu durumunu sıfırla
+            if fn is not cmd_sorgu:
+                context.user_data.pop("awaiting_sorgu", None)
             fn(update, context)
+            return
+        # Buton metni değil: kullanıcı /sorgu beklenen kodun metnini yazıyor olabilir
+        if context.user_data.get("awaiting_sorgu"):
+            context.user_data["awaiting_sorgu"] = False  # durumu sıfırla
+            run_sorgu(update, context, text)             # yazılan kodu analiz et
         # tanınmayan text -> sessizce yok say (bildirim verme)
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_button))
     dp.add_handler(MessageHandler(Filters.command, lambda u, c: None))

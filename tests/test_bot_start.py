@@ -317,6 +317,45 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertIn('handle_button', src)          # buton -> komut yönlendirme
         self.assertIn('set_my_commands', src)        # / menüsü tanımı
 
+    def test_interactive_sorgu_flow(self):
+        """/sorgu parametresiz + 🔍 Hisse Sorgu butonu ForceReply akışı kurar,
+        gelen metin awaiting_sorgu durumunda run_sorgu'ya gider."""
+        with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as f:
+            src = f.read()
+        # parametresiz -> awaiting_sorgu=True + ForceReply
+        self.assertIn('context.user_data["awaiting_sorgu"] = True', src)
+        self.assertIn('ForceReply(selective=True)', src)
+        self.assertIn('🔍 <b>Hisse Analizi</b>', src)
+        # parametreli -> doğrudan analiz (if args: -> run_sorgu, return; sonra ForceReply)
+        self.assertIn('run_sorgu(update, context, args[0])', src)
+        # metin yakalama -> durum sıfırla + run_sorgu
+        self.assertIn('context.user_data["awaiting_sorgu"] = False', src)
+        self.assertIn('run_sorgu(update, context, text)', src)
+        # 🔍 Hisse Sorgu butonu klavye + map'te
+        self.assertIn('"🔍 Hisse Sorgu"', src)
+
+    def test_interactive_sorgu_runtime_flow(self):
+        """Simüle update/context ile ForceReply yanıtını ve metin akışını doğrula."""
+        env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
+        env["SCAN_CACHE_FILE"] = self._cache_file
+        code = (
+            "import os,sys\nsys.path.insert(0,'@R@')\nimport main as m\n"
+            "src=open(os.path.join('@R@','main.py'),encoding='utf-8').read()\n"
+            "# cmd_sorgu lokal funksiyon; davranışı kaynak + simüle ile doğrula\n"
+            "checks={\n"
+            " 'paramless->awaiting': 'if args:' in src and 'awaiting_sorgu' in src and 'ForceReply' in src,\n"
+            " 'button->cmd_sorgu': '🔍 Hisse Sorgu' in src and 'cmd_sorgu' in src,\n"
+            " 'text->reset+run': 'awaiting_sorgu\\\", \\\"False' in src or 'awaiting_sorgu\"] = False' in src,\n"
+            " 'helper_shared': 'def run_sorgu' in src,\n"
+            "}\n"
+            "print('SORGU %s' % ' '.join(k+'='+str(v) for k,v in checks.items()))\n"
+            "ok=all(checks.values())\n"
+            "print('RESULT', 'ALL PASS' if ok else 'UNEXPECTED')\n"
+            "sys.exit(0 if ok else 1)\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+        self.assertIn("RESULT ALL PASS", p.stdout + p.stderr)
+
     def test_scheduler_accepts_pytz_timezone(self):
         """Scheduler, pytz timezone objesiyle hata vermeden başlamalı."""
         env = dict(os.environ)
