@@ -21,3 +21,5 @@ python-dotenv==1.0.1
 # APScheduler 3.x yalnızca pytz timezone objelerini kabul eder (string desteklemez);
 # BackgroundScheduler(timezone=pytz.timezone('Europe/Istanbul')) kullanılır.
 pytz
+# İş Yatırım API'si üzerinden güvenli yedek veri kaynağı (yfinance başarısızsa).
+isyatirimhisse==5.0.1

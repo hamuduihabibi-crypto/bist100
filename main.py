@@ -197,17 +197,55 @@ app = Flask(__name__)
 # =============================================================================
 # 1) TEKNİK ANALİZ MOTORU
 # =============================================================================
-def fetch_data(symbol: str) -> Optional[pd.DataFrame]:
-    """6 aylık günlük OHLCV verisini çeker ve tek seviyeli kolon adları döndürür."""
-    df = yf.download(
-        symbol, period="6mo", interval="1d",
-        progress=False, auto_adjust=True, threads=False,
-    )
-    if df is None or df.empty or len(df) < 60:
-        return None
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    return df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+def fetch_data(symbol: str) -> tuple:
+    """6 aylık günlük OHLCV verisi + veri kaynağı döndürür: (df, kaynak).
+
+    Önce yfinance dener; başarısız olursa (hata, boş DF, timeout) GÜVENLİ yedek
+    olarak İş Yatırım API'sine (isyatirimhisse) düşer. isyatirimhisse çağrısı da
+    try/except içindedir; sunucu IP'yi engellerse veya yanıt vermezse worker
+    çökmez, (None, kaynak) yumuşak dönülür.
+    """
+    try:
+        df = yf.download(
+            symbol, period="6mo", interval="1d",
+            progress=False, auto_adjust=True, threads=False,
+        )
+        if df is not None and not df.empty and len(df) >= 60:
+            if isinstance(df.columns, pd.MultiIndex):
+                df = df.copy()
+                df.columns = df.columns.get_level_values(0)
+            return df[["Open", "High", "Low", "Close", "Volume"]].astype(float), "Yahoo Finance"
+    except Exception:
+        pass  # yfinance hata verdi → yedek kaynağa geç
+
+    # --- Güvenli yedek: İş Yatırım API'si (isyatirimhisse) ---
+    try:
+        import datetime as _dt
+        from isyatirimhisse import fetch_stock_data
+        code = symbol.replace(".IS", "").strip()
+        end = _dt.date.today()
+        start = end - _dt.timedelta(days=200)
+        raw = fetch_stock_data(code, start.strftime("%d-%m-%Y"), end.strftime("%d-%m-%Y"))
+        if raw is None or raw.empty:
+            return None, "İş Yatırım"
+        raw = raw[~raw["HGDG_TARIH"].isna()].copy()
+        raw["HGDG_TARIH"] = pd.to_datetime(raw["HGDG_TARIH"])
+        raw = raw.dropna(subset=["HGDG_KAPANIS", "HGDG_MAX", "HGDG_MIN", "HGDG_HACIM"])
+        df = pd.DataFrame({
+            "Open": raw["HGDG_AOF"].astype(float),
+            "High": raw["HGDG_MAX"].astype(float),
+            "Low": raw["HGDG_MIN"].astype(float),
+            "Close": raw["HGDG_KAPANIS"].astype(float),
+            "Volume": raw["HGDG_HACIM"].astype(float),
+        })
+        df.index = pd.DatetimeIndex(raw["HGDG_TARIH"])
+        df = df.sort_index()
+        if len(df) < 60:
+            return None, "İş Yatırım"
+        return df, "İş Yatırım"
+    except Exception:
+        # İş Yatırım sunucusu engelledi / yanıt vermedi → yumuşak hata (worker çökmez)
+        return None, "İş Yatırım"
 
 
 def download_batch(symbols: list, chunk_size: int = 40) -> Optional[pd.DataFrame]:
@@ -280,7 +318,7 @@ def classic_pivots(h: float, low: float, c: float) -> dict:
     }
 
 
-def _compute_analysis(symbol: str, df: pd.DataFrame) -> Optional[dict]:
+def _compute_analysis(symbol: str, df: pd.DataFrame, data_source: str = "Yahoo Finance") -> Optional[dict]:
     """Hazır, tek hisselik OHLCV çerçevesinden eksiksiz analiz üretir.
 
     Hem analyze_single_stock (tek indirme) hem de scan_top_5_stocks (toplu
@@ -331,12 +369,16 @@ def _compute_analysis(symbol: str, df: pd.DataFrame) -> Optional[dict]:
         "volume_surge_pct": surge_pct,
         "target": target, "stop": stop, "rr": rr,
         "pivots": pivots,
+        "data_source": data_source,
     }
 
 
 def analyze_single_stock(symbol: str) -> Optional[dict]:
     """HERHANGİ bir geçerli hisse için eksiksiz analiz döndürür (/sorgu)."""
-    return _compute_analysis(symbol, fetch_data(symbol))
+    df, source = fetch_data(symbol)
+    if df is None:
+        return None
+    return _compute_analysis(symbol, df, source)
 
 
 # =============================================================================
@@ -643,6 +685,7 @@ def start_bot():
             return
         for i, a in enumerate(top, 1):
             msg += f"<b>{i}.</b> " + fmt_stock_line(a, show_score=True) + "\n"
+        msg += f"\n📊 <b>Kaynak:</b> {top[0].get('data_source', 'Yahoo Finance')}"
         update.message.reply_text(msg, parse_mode="HTML", disable_web_page_preview=True)
 
     # --- /sorgu ---
@@ -675,7 +718,8 @@ def start_bot():
             f"<b>📐 Klasik Pivotlar</b>\n"
             f"Pivot P: <code>{p['P']:.2f}</code>\n"
             f"Direnç R1: <code>{p['R1']:.2f}</code> | R2: <code>{p['R2']:.2f}</code> | R3: <code>{p['R3']:.2f}</code>\n"
-            f"Destek S1: <code>{p['S1']:.2f}</code> | S2: <code>{p['S2']:.2f}</code> | S3: <code>{p['S3']:.2f}</code>"
+            f"Destek S1: <code>{p['S1']:.2f}</code> | S2: <code>{p['S2']:.2f}</code> | S3: <code>{p['S3']:.2f}</code>\n"
+            f"\n📊 <b>Kaynak:</b> {a['data_source']}"
         )
         update.message.reply_text(msg, parse_mode="HTML")
 
@@ -743,6 +787,7 @@ def start_bot():
     msg = "<b>🔔 Otomatik Tarama</b>\n\n"
     for i, a in enumerate(top, 1):
         msg += f"<b>{i}.</b> {fmt_stock_line(a)}\n"
+    msg += f"\n📊 <b>Kaynak:</b> {top[0].get('data_source', 'Yahoo Finance')}"
     for chat_id in list(AUTO_SUBSCRIBERS):
         if not AUTO_SUBSCRIBERS.get(chat_id):
             continue
