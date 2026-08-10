@@ -208,7 +208,7 @@ def fetch_data(symbol: str) -> tuple:
     try:
         df = yf.download(
             symbol, period="6mo", interval="1d",
-            progress=False, auto_adjust=True, threads=False,
+            progress=False, auto_adjust=True, threads=False, timeout=20,
         )
         if df is not None and not df.empty and len(df) >= 60:
             if isinstance(df.columns, pd.MultiIndex):
