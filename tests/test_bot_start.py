@@ -61,7 +61,8 @@ class TestGunicornBotStart(unittest.TestCase):
 
     # --- BIST Tüm evreni + toplu (batch) tarama ---------------------------------
     def test_bist_universe(self):
-        """Seed evreni: hepsi .IS, benzersiz, en az 300 kod (BIST Tüm'e yakın)."""
+        """Seed evreni: hepsi .IS, benzersiz, en az 250 kod (aktif BIST; delisted
+        temizliği sonrası gerçek canlı-veri doğrulamalı evren)."""
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)
         env["TELEGRAM_BOT_TOKEN"] = ""  # bot başlatma; Render botuyla çakışma yok
@@ -77,7 +78,7 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertIn("n=", p.stdout)
         self.assertIn("is=True uniq=True", p.stdout)
         n = int(p.stdout.split("n=")[1].split()[0])
-        self.assertGreaterEqual(n, 300)
+        self.assertGreaterEqual(n, 250)
 
     def test_scan_top5_mocked_batch(self):
         """yf.download TEK batch çağrısına karşılık verir; tarama sıralı döner."""

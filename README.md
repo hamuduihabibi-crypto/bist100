@@ -15,9 +15,9 @@ kriterlerini karşılayan hisseleri skorlayıp **Top 5** listesini hem web API h
 
 | Alan | Detay |
 |------|-------|
-| **BIST Tüm Evreni** | BIST 30/100 ile sınırlı kalmayıp **~340 adet arındırılmış seed hisse** (`main.py` → `BIST_TICKERS_SEED`) içeren geniş bir evreni tarar. Log'dan çıkarılan 44 sorunlu/delisted kod (ASYAB, BMEKS, ANACM, MUTLU, AGIDA, TRKCM, TKURU, …) listede yoktur. En güncel tam liste için `BIST_TICKERS_FILE` ortam değişkeniyle bir metin dosyası da belirtilebilir (bir satır bir kod). |
+| **BIST Tüm Evreni** | BIST 30/100 ile sınırlı kalmayıp **~278 adet canlı-veri doğrulamalı seed hisse** (`main.py` → `BIST_TICKERS_SEED`) içeren geniş bir evreni tarar. Toplam 106 sorunlu/delisted kod çıkarılmıştır (37 log tabanlı + 62 canlı `yfinance` doğrulamalı + 7 mükerrer): ASYAB, BMEKS, ANACM, MUTLU, AGIDA, TRKCM, TKURU, SBAG, DFHOL, GSTKM, … En güncel tam liste için `BIST_TICKERS_FILE` ortam değişkeniyle bir metin dosyası da belirtilebilir (bir satır bir kod). |
 | **Dinamik Sorgu (`/sorgu`)** | Borsa İstanbul'da işlem gören **herhangi bir** hisse kodu canlı analiz edilir — kodun seed evreninde olması gerekmez (`/sorgu GOZDE`). |
-| **Performans Optimizasyonu** | `yf.download(BIST_TICKERS, ..., group_by="ticker")` ile **tek paket (batch) indirme** + `concurrent.futures.ThreadPoolExecutor` (max_workers=4) ile **paralel** gösterge hesabı. 500'e yakın hisse, 120 sn'lik Render/Gunicorn timeout'una takılmadan saniyeler içinde taranır. Ayrıca sonuç **10 dakika bellekte cache'lenir** (`SCAN_CACHE_TTL=600`) — aynı TTL aralığındaki `/top5`, `/api/scan` ve `/ototarma` istekleri **yeniden indirme yapmaz**, bu da Render'da CPU/RAM yükünü ve CPU limitini düşürür. |
+| **Performans Optimizasyonu** | `yf.download(BIST_TICKERS, ..., group_by="ticker")` ile **tek paket (batch) indirme** + `concurrent.futures.ThreadPoolExecutor` (max_workers=4) ile **paralel** gösterge hesabı. Delisted kodlar çıkarıldığı için indirme yükü düştü. Sonuç **1 saat bellekte cache'lenir** (`SCAN_CACHE_TTL=3600`) — free tier'da tek 278-hisse taraması 15+ dk sürebildiği için TTL, tarama süresinin üzerinde tutulur (yoksa `/api/scan` sonsuza dek `202` döner, `200` asla dönmez). |
 | **Teknik Göstergeler** | RSI(14) momentum bandı (55–72), MACD(12,26,9) sinyalleri, EMA20/50 trendi, 20 günlük destek/direnç, Klasik Pivot seviyeleri (P, R1–R3, S1–S3) ve Hacim Surge %. |
 | **Portföy & Risk Stratejisi** | 100.000 TL sermaye, **4 eşit pozisyon** (25.000 TL/hisse), **+%6 hedef** ve **−%3 sert stop-loss** planı (R/R ≈ 2:1). |
 | **Otomatik Tarama & Zamanlayıcı** | `APScheduler` + `pytz.timezone("Europe/Istanbul")` ile periyodik Top 5 taraması ve bildirim (`/ototarma ac\|kapat`, varsayılan 30 dk). |
@@ -36,11 +36,11 @@ kriterlerini karşılayan hisseleri skorlayıp **Top 5** listesini hem web API h
         ┌──────────────────────────────────────────────────────────────────┐
         │   main.py  —  Analiz Motoru                                      │
         │   • get_bist_tickers() : BIST Tüm seed / BIST_TICKERS_FILE       │
-        │   • download_batch()   : TEK çağrıda ~340 hissenin OHLCV'si     │
+        │   • download_batch()   : TEK çağrıda ~278 hissenin OHLCV'si     │
         │   • _compute_analysis(): RSI · MACD · EMA20/50 · pivotlar · surge │
         │   • score_stock()      : momentum puanı (0–100+)                 │
         │   • scan_top_5_stocks(): ThreadPoolExecutor (max_workers=4)      │
-        │   • 10 dk in-memory cache: SCAN_CACHE_TTL=600 → tekrar indirme yok│
+        │   • 1 saat in-memory cache: SCAN_CACHE_TTL=3600 → tekrar indirme │
         └──────────────┬───────────────────────────────────────────────────┘
                        │
           ┌────────────┴─────────────┬───────────────────────────────┐
@@ -211,7 +211,7 @@ bist_telegram_bot/
 | `TARGET_PCT` / `STOP_PCT` | `0.06` / `0.03` | Hedef / sert stop (R/R ≈ 2:1). |
 | `RSI_MIN`, `RSI_MAX` | `55` / `72` | Momentum RSI bandı. |
 | `AUTO_SCAN_INTERVAL_MIN` | `30` | `/ototarma` tarama sıklığı (dk). |
-| `BIST_TICKERS_SEED` | ~340 kod | BIST Tüm seed evreni (`get_bist_tickers()`); delisted kod çıkarılmış. |
+| `BIST_TICKERS_SEED` | ~278 kod | BIST Tüm seed evreni (`get_bist_tickers()`); delisted kodlar canlı-veriyle doğrulanıp çıkarılmış. |
 | `BIST_TICKERS_FILE` | (env) | Seed yerine geçen tam liste dosyası. |
 
 ---
