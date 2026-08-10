@@ -439,6 +439,7 @@ def scan_top_5_stocks(top_n: int = 5) -> list:
 # --- Arka plan tarama yönetimi (non-blocking /api/scan) ---------------------
 _SCAN_RUNNING = False          # arka plan taraması zaten çalışıyor mu
 _SCAN_RUNNING_LOCK = threading.Lock()
+_SCAN_LAST_ERROR = None        # son arka plan tarama hatası (teşhis)
 
 
 def _scan_cache_fresh(top_n: int = 5) -> bool:
@@ -463,10 +464,13 @@ def _ensure_scan_running():
         _SCAN_RUNNING = True
 
     def _bg():
+        global _SCAN_RUNNING, _SCAN_LAST_ERROR
         try:
             scan_top_5_stocks()
+            _SCAN_LAST_ERROR = None
         except Exception as e:  # pragma: no cover
             print(f"[!] Arka plan tarama hatası: {e}")
+            _SCAN_LAST_ERROR = repr(e)
         finally:
             global _SCAN_RUNNING
             with _SCAN_RUNNING_LOCK:
@@ -514,11 +518,13 @@ def api_scan():
         return jsonify({"count": len(_SCAN_CACHE),
                         "results": [dict(a) for a in _SCAN_CACHE]})
     _ensure_scan_running()
-    return jsonify({
+    payload = {
         "status": "scanning",
         "message": "Tarama arka planda başlatıldı, lütfen 10 saniye sonra tekrar deneyin",
-    }), 202
-
+    }
+    if _SCAN_LAST_ERROR:
+        payload["last_error"] = _SCAN_LAST_ERROR
+    return jsonify(payload), 202
 
 @app.route("/api/stock/<symbol>", methods=["GET"])
 def api_stock(symbol: str):
