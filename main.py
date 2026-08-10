@@ -1106,9 +1106,11 @@ def _persist_rec(rec):
         _save_watchlists(data)
 
 
-def _tr_num(v):
-    """TL tutarı Türkçe biçimde: binlik nokta, ondalık virgül (+/- işareti korunur)."""
-    s = f"{v:+,.2f}"
+def _tr_num(v, signed=True):
+    """TL tutarı Türkçe biçimde: binlik nokta, ondalık virgül.
+    signed=True -> pozitifte '+', negatifte '-' işareti (net kâr/zarar için).
+    signed=False -> tutar/gösterimlerde işaretsiz."""
+    s = f"{v:+,.2f}" if signed else f"{abs(v):,.2f}"
     return s.replace(",", "_").replace(".", ",").replace("_", ".")
 
 
@@ -1133,7 +1135,7 @@ def fmt_watchlist_price(rec, a):
         return (f"<b>{code}</b>\n"
                 f"   Fiyat: <code>{price:,.2f} ₺</code> | 🧍 {state}\n"
                 f"   Maliyet: <code>{cost:,.2f} ₺</code> · {lots:,.0f} lot\n"
-                f"   Yatırım: <code>{_tr_num(total)} TL</code> → Değer: <code>{_tr_num(portf)} TL</code>\n"
+                f"   Yatırım: <code>{_tr_num(total, signed=False)} TL</code> → Değer: <code>{_tr_num(portf, signed=False)} TL</code>\n"
                 f"   Net {pnl_label}: {emoji} <code>{_tr_num(net)} TL</code> (<code>%{pct:+.2f}</code>)")
     if cost:
         pnl = (price - cost) / cost * 100
