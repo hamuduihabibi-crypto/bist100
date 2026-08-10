@@ -210,25 +210,40 @@ def fetch_data(symbol: str) -> Optional[pd.DataFrame]:
     return df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
 
 
-def download_batch(symbols: list) -> Optional[pd.DataFrame]:
-    """BIST Tüm listesini TEK yf.download çağrısıyla toplu indirir.
+def download_batch(symbols: list, chunk_size: int = 40) -> Optional[pd.DataFrame]:
+    """BIST listesini PARÇALI (chunked) yf.download çağrılarıyla indirir.
 
-    group_by="ticker" => kolonlar MultiIndex (ticker, alan) olur; 500+ hisse
-    tek seferde, yfinance'ın iç thread'leriyle çekilir (teker teker 500 çağrı
-    yerine). 120 sn'lik Gunicorn timeout'unun altında kalmanın asıl anahtarı budur.
+    278 hisselik evren tek dev yf.download yerine `chunk_size` (varsayılan 40)
+    hisselik alt gruplara bölünür; her parça kendi timeout=20 değeriyle çekilir.
+    Böylece tek bir takılan/yavaş hisse tüm batch'i kilitlemez ve bellek (RAM)
+    yükü her çağrıda düşük kalır — Render free tier (512MB) için güvenli.
+    Parçalar sütun ekseninde (axis=1) birleştirilerek aynı MultiIndex
+    (ticker, alan) çerçevesine geri döndürülür.
     """
     symbols = list(dict.fromkeys(symbols))  # yinelenenleri koru
     if not symbols:
         return None
-    df = yf.download(
-        symbols, period="6mo", interval="1d",
-        progress=False, auto_adjust=True, threads=True,
-        group_by="ticker", timeout=20,
-    )
-    if df is None or df.empty:
+    import math
+    frames = []
+    for start in range(0, len(symbols), chunk_size):
+        piece = symbols[start:start + chunk_size]
+        try:
+            df = yf.download(
+                piece, period="6mo", interval="1d",
+                progress=False, auto_adjust=True, threads=True,
+                group_by="ticker", timeout=20,
+            )
+            if df is not None and not df.empty:
+                frames.append(df)
+        except Exception:
+            # Bir parça başarısız olursa tüm evreni düşürme; parçayı atla.
+            continue
+    if not frames:
         return None
-    return df
-
+    if len(frames) == 1:
+        return frames[0]
+    # Sütun ekseninde birleştir (her parça MultiIndex: ticker x alan).
+    return pd.concat(frames, axis=1)
 
 def compute_macd_signal(close: pd.Series) -> tuple:
     """Bullish/Bearish MACD sinyali. (macd_line, signal_line, label) döndürür."""

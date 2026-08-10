@@ -81,7 +81,7 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertGreaterEqual(n, 250)
 
     def test_scan_top5_mocked_batch(self):
-        """yf.download TEK batch çağrısına karşılık verir; tarama sıralı döner."""
+        """download_batch tek çağrıda 6 hisse döndürür; tarama sıralı gelir."""
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)
         env["TELEGRAM_BOT_TOKEN"] = ""
@@ -99,7 +99,7 @@ class TestGunicornBotStart(unittest.TestCase):
             "  idx=pd.date_range(end=pd.Timestamp.today(), periods=n)\n"
             "  return pd.DataFrame({'Open':close,'High':hi,'Low':lo,'Close':close,'Volume':vol}, index=idx)\n"
             "syms=m.get_bist_tickers()[:6]\n"
-            "m.yf.download=lambda s,**k: pd.concat({sym:frame(i) for i,sym in enumerate(syms)},axis=1)\n"
+            "m.download_batch=lambda s,**k: pd.concat({sym:frame(i) for i,sym in enumerate(syms)},axis=1)\n"
             "top=m.scan_top_5_stocks(5)\n"
             "sc=[t['score'] for t in top]\n"
             "print('SCAN n=%d sorted=%s fields=%s' % (len(top),"
@@ -114,7 +114,7 @@ class TestGunicornBotStart(unittest.TestCase):
         self.assertEqual(n, 5)  # 6 geçerli seed kodundan gerçek en-iyi-5 çekildi
 
     def test_scan_top5_in_memory_cache(self):
-        """Tarama sonucu 10 dk TTL'li cache'lenir; 2. çağrı indirme YAPMAZ."""
+        """Tarama sonucu 1 saat TTL'li cache'lenir; 2. çağrı indirme YAPMAZ."""
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)
         env["TELEGRAM_BOT_TOKEN"] = ""
@@ -132,7 +132,7 @@ class TestGunicornBotStart(unittest.TestCase):
             "hits=[0]\n"
             "def dl(s,**k):\n"
             "  hits[0]+=1; return pd.concat({sym:frame(i) for i,sym in enumerate(syms)},axis=1)\n"
-            "m.yf.download=dl\n"
+            "m.download_batch=dl\n"
             "r1=m.scan_top_5_stocks(5); r2=m.scan_top_5_stocks(5)\n"
             "same=[x['symbol'] for x in r1]==[x['symbol'] for x in r2]\n"
             "print('CACHE first=%d second=%d downloads=%d same=%s' % (len(r1),len(r2),hits[0],same))\n"
@@ -168,7 +168,7 @@ class TestGunicornBotStart(unittest.TestCase):
             "  with lk: cnt[0]+=1\n"
             "  time.sleep(0.25)\n"
             "  return pd.concat({sym:fr(i) for i,sym in enumerate(syms)},axis=1)\n"
-            "m.yf.download=slow_dl\n"
+            "m.download_batch=slow_dl\n"
             "res=[]\n"
             "def w(): res.append(len(m.scan_top_5_stocks(5)))\n"
             "ts=[threading.Thread(target=w) for _ in range(6)]\n"
@@ -205,7 +205,7 @@ class TestGunicornBotStart(unittest.TestCase):
             "  return pd.DataFrame({'Open':c,'High':hi,'Low':lo,'Close':c,'Volume':v}, index=pd.date_range(end=pd.Timestamp.today(),periods=n))\n"
             "syms=m.get_bist_tickers()[:6]\n"
             "def dl(s,**k): return pd.concat({sym:fr(i) for i,sym in enumerate(syms)},axis=1)\n"
-            "m.yf.download=dl\n"
+            "m.download_batch=dl\n"
             "m._SCAN_CACHE=None; m._SCAN_CACHE_TS=0.0; m._SCAN_CACHE_TOP_N=None\n"
             "c=m.app.test_client()\n"
             "r=c.get('/api/scan')\n"
