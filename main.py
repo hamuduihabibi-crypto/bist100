@@ -229,7 +229,7 @@ def download_batch(symbols: list, chunk_size: int = 40) -> Optional[pd.DataFrame
         piece = symbols[start:start + chunk_size]
         try:
             df = yf.download(
-                piece, period="6mo", interval="1d",
+                piece, period="3mo", interval="1d",
                 progress=False, auto_adjust=True, threads=True,
                 group_by="ticker", timeout=20,
             )
