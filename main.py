@@ -188,6 +188,7 @@ TARGET_PCT = 0.06            # +%6 hedef kâr
 STOP_PCT = 0.03              # -%3 sert stop-loss
 RSI_MIN, RSI_MAX = 55.0, 72.0  # momentum RSI bandı
 AUTO_SCAN_INTERVAL_MIN = 30  # /ototarma tarama sıklığı (dakika)
+AUTO_SCAN_ENABLED = True     # /ototarma VARSYILAN OLARAK AÇIK (startup'tan itibaren)
 
 # --- Flask uygulaması --------------------------------------------------------
 app = Flask(__name__)
@@ -670,18 +671,30 @@ def start_bot():
         )
 
     # --- /ototarma ---
-    def toggle_auto(chat_id: int) -> bool:
-        AUTO_SUBSCRIBERS[chat_id] = not AUTO_SUBSCRIBERS.get(chat_id, False)
-        return AUTO_SUBSCRIBERS[chat_id]
-
     def cmd_ototarma(update, context):
-        enabled = toggle_auto(update.effective_chat.id)
-        state = "AÇIK ✅" if enabled else "KAPALI ❌"
-        update.message.reply_text(
-            f"Otomatik tarama {state}.\n"
-            f"Her {AUTO_SCAN_INTERVAL_MIN} dk'da bir Top 5 uyarısı gönderilecek.",
-            parse_mode="HTML",
-        )
+            global AUTO_SCAN_ENABLED
+            chat_id = update.effective_chat.id
+            args = (context.args or [])
+            if args:
+                cmd = args[0].lower()
+                if cmd in ("ac", "on", "aç", "1"):
+                    AUTO_SCAN_ENABLED = True
+                    AUTO_SUBSCRIBERS[chat_id] = True
+                elif cmd in ("kapat", "off", "0"):
+                    AUTO_SCAN_ENABLED = False
+                    AUTO_SUBSCRIBERS[chat_id] = False
+                else:
+                    # Bilinmeyen argüman → durumu raporla, değiştirme
+                    pass
+            else:
+                AUTO_SCAN_ENABLED = not AUTO_SCAN_ENABLED  # argümansız toggle
+                AUTO_SUBSCRIBERS[chat_id] = AUTO_SCAN_ENABLED
+            state = "AÇIK ✅" if AUTO_SCAN_ENABLED else "KAPALI ❌"
+            update.message.reply_text(
+                f"Otomatik tarama <b>{state}</b>.\n"
+                f"Her {AUTO_SCAN_INTERVAL_MIN} dk'da bir Top 5 uyarısı gönderilecek.",
+                parse_mode="HTML",
+            )
 
     dp.add_handler(CommandHandler("start", cmd_start))
     dp.add_handler(CommandHandler("bilgi", cmd_bilgi))
@@ -693,24 +706,26 @@ def start_bot():
 
     # --- APScheduler ile periyodik tarama (ototarma abonelerine) -------------
     def auto_scan_job():
+        if not AUTO_SCAN_ENABLED:
+            return  # global kapatıldı (/ototarma kapat) → tarama durur
         if not AUTO_SUBSCRIBERS:
             return
+    try:
+        top = scan_top_5_stocks()
+    except Exception:
+        return
+    if not top:
+        return
+    msg = "<b>🔔 Otomatik Tarama</b>\n\n"
+    for i, a in enumerate(top, 1):
+        msg += f"<b>{i}.</b> {fmt_stock_line(a)}\n"
+    for chat_id in list(AUTO_SUBSCRIBERS):
+        if not AUTO_SUBSCRIBERS.get(chat_id):
+            continue
         try:
-            top = scan_top_5_stocks()
+            BOT.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
         except Exception:
-            return
-        if not top:
-            return
-        msg = "<b>🔔 Otomatik Tarama</b>\n\n"
-        for i, a in enumerate(top, 1):
-            msg += f"<b>{i}.</b> {fmt_stock_line(a)}\n"
-        for chat_id in list(AUTO_SUBSCRIBERS):
-            if not AUTO_SUBSCRIBERS.get(chat_id):
-                continue
-            try:
-                BOT.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
-            except Exception:
-                pass
+            pass
 
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
