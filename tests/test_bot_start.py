@@ -16,6 +16,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class TestGunicornBotStart(unittest.TestCase):
+    def setUp(self):
+        # Disk cache'i her test için izole et (gerçek scan_cache.json repoya
+        # yazılmasın; subprocess env'e temiz yol verilsin).
+        import tempfile as _tf
+        fd, p = _tf.mkstemp(prefix="scan_cache_", suffix=".json")
+        os.close(fd)
+        self._cache_file = p
+        os.environ["SCAN_CACHE_FILE"] = p
+
+    def tearDown(self):
+        try:
+            os.remove(self._cache_file)
+        except OSError:
+            pass
+
     def test_main_compiles(self):
         import py_compile
         py_compile.compile(os.path.join(ROOT, "main.py"), doraise=True)
@@ -226,6 +241,82 @@ class TestGunicornBotStart(unittest.TestCase):
 
 
 # --- APScheduler timezone fix (pytz) ---------------------------------------
+    def test_disk_cache_roundtrip(self):
+        """scan_top_5_stocks başarılı sonucu diske yazar; _load yeniden okur."""
+        env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
+        env["SCAN_CACHE_FILE"] = self._cache_file
+        code = (
+            "import os,sys,time\nsys.path.insert(0,'@R@')\n"
+            "import numpy as np,pandas as pd\nimport main as m\n"
+            "env_file=os.environ['SCAN_CACHE_FILE']  # test temp dosyası\n"
+            "def fr(s):\n"
+            "  rng=np.random.default_rng(s); n=90\n"
+            "  c=np.linspace(100.,99.,n)+rng.normal(0,0.35,n); c[-1]+=1.0\n"
+            "  return pd.DataFrame({'Open':c,'High':c,'Low':c,'Close':c,'Volume':np.full(n,1e6)},index=pd.date_range(end=pd.Timestamp.today(),periods=n))\n"
+            "syms=m.get_bist_tickers()[:4]\n"
+            "m.download_batch=lambda s,**k: pd.concat({sym:fr(i) for i,sym in enumerate(syms)},axis=1)\n"
+            "top=m.scan_top_5_stocks(5)\n"
+            "on_disk=os.path.exists(env_file) and os.path.getsize(env_file)>5\n"
+            "loaded=m._load_scan_cache_disk()\n"
+            "ls=[r['symbol'] for r in loaded['results']] if loaded else []\n"
+            "ts=[r['symbol'] for r in top]\n"
+            "print('DISK written=%s loaded=%s same_syms=%s' % (on_disk, loaded is not None, ls==ts))\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+        self.assertIn("DISK written=True loaded=True same_syms=True", p.stdout + p.stderr)
+
+    def test_get_cached_top5_no_download_when_cold(self):
+        """cache boşsa _get_cached_top5 None döner ve download_batch ÇAĞRILMAZ."""
+        env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
+        env["SCAN_CACHE_FILE"] = self._cache_file
+        code = (
+            "import os,sys\nsys.path.insert(0,'@R@')\nimport main as m\n"
+            "hits=[0]\nm.download_batch=lambda *a,**k: (hits.__setitem__(0,hits[0]+1) or None)\n"
+            "m._SCAN_CACHE=None; m._SCAN_CACHE_TS=0.0; m._SCAN_CACHE_TOP_N=None\n"
+            "try:\n os.remove(os.environ['SCAN_CACHE_FILE'])\nexcept Exception:\n pass\n"
+            "r=m._get_cached_top5()\n"
+            "print('COLD result=%s downloads=%d' % (r, hits[0]))\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+        self.assertIn("COLD result=None downloads=0", p.stdout + p.stderr)
+
+    def test_get_cached_top5_reads_disk_without_download(self):
+        """Soğuk bellek ama geçerli disk cache varsa _get_cached_top5 indirme yapmadan yükler."""
+        env = dict(os.environ); env.pop("PYTHONPATH", None); env["TELEGRAM_BOT_TOKEN"] = ""
+        env["SCAN_CACHE_FILE"] = self._cache_file
+        code = (
+            "import os,sys,json,time\nsys.path.insert(0,'@R@')\nimport main as m\n"
+            "f=os.environ['SCAN_CACHE_FILE']\n"
+            "disk={'timestamp':'2026-08-10 18:30:00','epoch':time.time()-10,'top_n':5,\n"
+            "      'results':[{'symbol':'THYAO.IS','price':300.0,'score':50.0,'data_source':'Yahoo Finance'}]}\n"
+            "json.dump(disk,open(f,'w',encoding='utf-8'))\n"
+            "hits=[0]\nm.download_batch=lambda *a,**k: (hits.__setitem__(0,hits[0]+1) or None)\n"
+            "m._SCAN_CACHE=None; m._SCAN_CACHE_TS=0.0; m._SCAN_CACHE_TOP_N=None\n"
+            "r=m._get_cached_top5()\n"
+            "print('DISK5 r=%s downloads=%d sym=%s' % (r is not None, hits[0], r[0]['symbol'] if r else 'NONE'))\n"
+        ).replace("@R@", ROOT.replace("\\", "/"))
+        p = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+        self.assertIn("DISK5 r=True downloads=0 sym=THYAO.IS", p.stdout + p.stderr)
+
+    def test_scheduler_cron_precache_jobs(self):
+        """Kapanış (18:30) ve açılış (09:45) cron ön-tarama işleri tanımlanır."""
+        with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn('hour=18, minute=30', src)   # kapanış sonrası
+        self.assertIn('hour=9, minute=45', src)     # açılış öncesi
+        self.assertIn('def precache_job', src)
+
+    def test_reply_keyboard_buttons_defined(self):
+        """/start ve /bilgi kalıcı ReplyKeyboardMarkup butonları + yönlendirme var."""
+        with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn('ReplyKeyboardMarkup', src)
+        for btn in ("🎯 Top 5 Hisse", "💰 Portföy Planı",
+                    "⚙️ Otomatik Tarama", "ℹ️ Bilgi & Yardım"):
+            self.assertIn(btn, src)
+        self.assertIn('handle_button', src)          # buton -> komut yönlendirme
+        self.assertIn('set_my_commands', src)        # / menüsü tanımı
+
     def test_scheduler_accepts_pytz_timezone(self):
         """Scheduler, pytz timezone objesiyle hata vermeden başlamalı."""
         env = dict(os.environ)

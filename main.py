@@ -44,6 +44,7 @@ except ImportError:  # .env desteği yoksa os.environ yeterlidir
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 PORT = int(os.getenv("PORT", "5000"))
+SCAN_CACHE_FILE = os.getenv("SCAN_CACHE_FILE", "scan_cache.json")  # diske kalıcı önbellek
 
 # --- BIST Tüm tarama evreni ------------------------------------------------
 # ~500 BIST hissesi. Liste güncellenir; en güncel tam listeniz varsa
@@ -453,6 +454,8 @@ _SCAN_CACHE = None            # son tarama sonucu (dict listesi)
 _SCAN_CACHE_TS = 0.0          # son taramanın zaman damgası
 _SCAN_CACHE_TOP_N = None      # cache'lenen top_n (farklı N için cache geçersiz)
 _SCAN_LOCK = threading.Lock()  # eşzamanlı taramaları serileştirir (F5 patlaması)
+_PENDING_GUNCELTOP5 = set()     # /gunceltop5 isteyen chat_id listesi
+_PENDING_LOCK = threading.Lock()  # pending listesini serialize eder
 
 
 def scan_top_5_stocks(top_n: int = 5) -> list:
@@ -520,6 +523,7 @@ def scan_top_5_stocks(top_n: int = 5) -> list:
         _SCAN_CACHE = [dict(a) for a in top]
         _SCAN_CACHE_TS = now
         _SCAN_CACHE_TOP_N = top_n
+        _save_scan_cache_disk(_SCAN_CACHE)  # diske kalıcı önbellek (restore-safe)
         return [dict(a) for a in _SCAN_CACHE]
 
 
@@ -527,6 +531,61 @@ def scan_top_5_stocks(top_n: int = 5) -> list:
 _SCAN_RUNNING = False          # arka plan taraması zaten çalışıyor mu
 _SCAN_RUNNING_LOCK = threading.Lock()
 _SCAN_LAST_ERROR = None        # son arka plan tarama hatası (teşhis)
+
+
+def _now_tr_str():
+    """İstanbul saatiyle şimdiki zaman damgası (disk cache için)."""
+    import datetime
+    tr = datetime.datetime.now(pytz.timezone("Europe/Istanbul"))
+    return tr
+
+
+def _save_scan_cache_disk(cache: list):
+    """Tarama sonucunu diske (scan_cache.json) kalıcı olarak yazar.
+
+    Render free tier'da instance zaman zaman restore/sleep olur; diske yazılan
+    önbellek sayesinde uygulama yeniden başladığında bile /api/scan ve /top5
+    0 ms yanıt verebilir (yeniden indirme/zaman alan tarama gerekmez).
+    """
+    try:
+        ts = _now_tr_str()
+        disk = {
+            "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
+            "epoch": ts.timestamp(),
+            "top_n": _SCAN_CACHE_TOP_N,
+            "results": [dict(a) for a in cache],
+        }
+        tmp = SCAN_CACHE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            import json
+            json.dump(disk, f, ensure_ascii=False)
+        import os as _os
+        _os.replace(tmp, SCAN_CACHE_FILE)  # atomik yazma (yarım dosya okunmaz)
+    except Exception as e:  # pragma: no cover — disk hatası taramayı durdurmasın
+        print(f"[!] Disk cache yazılamadı: {e}")
+
+
+def _load_scan_cache_disk() -> Optional[list]:
+    """scan_cache.json'dan (varsa geçerli) sonucu döndürür; yoksa None.
+
+    "Geçerli" = dosya mevcut VE results listesi boş değil. TTL ayrımı yapılmaz;
+    geçerlilik kararı arayan fonksiyondadır (bugüne-ait kontrolü api/scheduler'da).
+    """
+    try:
+        if not os.path.isfile(SCAN_CACHE_FILE):
+            return None
+        import json
+        with open(SCAN_CACHE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        results = data.get("results") or []
+        top_n = data.get("top_n") or 5
+        ts = data.get("timestamp") or ""
+        if not results:
+            return None
+        return {"results": results, "top_n": top_n, "timestamp": ts}
+    except Exception as e:  # pragma: no cover
+        print(f"[!] Disk cache okunamadı: {e}")
+        return None
 
 
 def _scan_cache_fresh(top_n: int = 5) -> bool:
@@ -562,8 +621,72 @@ def _ensure_scan_running():
             global _SCAN_RUNNING
             with _SCAN_RUNNING_LOCK:
                 _SCAN_RUNNING = False
+            _dispatch_gunceltop5()  # bekleyenlere yeni Top-5'i gönder
 
     threading.Thread(target=_bg, name="scan-background", daemon=True).start()
+
+
+def _get_cached_top5() -> Optional[list]:
+    """Mevcut Top-5 sonucunu, indirme YAPMADAN döndürür (/top5 için).
+
+    Öncelik: in-memory TTL cache; yoksa diske yazılmış kalıcı cache. Canlı
+    tarama başlatmaz -> /top5 komutu her zaman 0 ms yanıt verir.
+    """
+    global _SCAN_CACHE, _SCAN_CACHE_TS, _SCAN_CACHE_TOP_N
+    if _scan_cache_fresh():
+        return [dict(a) for a in _SCAN_CACHE]
+    disk = _load_scan_cache_disk()
+    if disk and disk.get("results"):
+        # diski bellek cache'ine de yükle (sonraki çağrılar daha da hızlı)
+        _SCAN_CACHE = [dict(a) for a in disk["results"]]
+        _SCAN_CACHE_TOP_N = disk.get("top_n") or 5
+        # epoch yoksa timestamp'tan dene
+        try:
+            import datetime
+            ts = disk.get("timestamp", "") or ""
+            _SCAN_CACHE_TS = datetime.datetime.strptime(
+                ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.UTC).timestamp()
+        except Exception:
+            _SCAN_CACHE_TS = time.time() - SCAN_CACHE_TTL  # bayat varsay (indirme çalışır)
+        return [dict(a) for a in _SCAN_CACHE]
+    return None
+
+
+def _last_scan_display_str() -> str:
+    """Son taramanın İstanbul saatiyle okunur zaman damgası (/top5 için)."""
+    try:
+        import datetime
+        if not _SCAN_CACHE_TS:
+            return "Bilinmiyor"
+        tr = datetime.datetime.fromtimestamp(_SCAN_CACHE_TS,
+                                             pytz.timezone("Europe/Istanbul"))
+        return tr.strftime("%d %B %Y - %H:%M")
+    except Exception:
+        return "Bilinmiyor"
+
+
+def _dispatch_gunceltop5():
+    """Arka plan taraması bitince /gunceltop5 bekleyenlere yeni Top-5'i gönder."""
+    global _PENDING_GUNCELTOP5
+    if not _PENDING_GUNCELTOP5:
+        return
+    top = _get_cached_top5()
+    if not top:
+        return
+    msg = "<b>🔥 Yeni Top 5 Momentum</b>\n\n"
+    for i, a in enumerate(top, 1):
+        msg += f"<b>{i}.</b> " + fmt_stock_line(a, show_score=True) + "\n"
+    msg += f"\n📊 <b>Kaynak:</b> {top[0].get('data_source', 'Yahoo Finance')}"
+    import threading as _th
+    with _th.Lock():  # idempotent: sadece mevcut listedekilere gönder
+        chat_ids = list(_PENDING_GUNCELTOP5)
+        _PENDING_GUNCELTOP5 = set()
+    for chat_id in chat_ids:
+        try:
+            if BOT is not None:
+                BOT.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
+        except Exception:
+            pass
 
 # =============================================================================
 # 3) PORTFÖY HESAPLAMA
@@ -601,9 +724,10 @@ def api_scan():
     başlatılır ve 202 döner (Gunicorn 120s timeout / Bad Gateway koruması):
     HTTP isteği asla bloklanmaz.
     """
-    if _scan_cache_fresh():
-        return jsonify({"count": len(_SCAN_CACHE),
-                        "results": [dict(a) for a in _SCAN_CACHE]})
+    top = _get_cached_top5()
+    if top:
+        return jsonify({"count": len(top),
+                        "results": top})
     _ensure_scan_running()
     payload = {
         "status": "scanning",
@@ -664,26 +788,30 @@ def start_bot():
 
     # --- /start ---
     def cmd_start(update, context):
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 Top 5 Tarama", callback_data=None,
-                                  url="https://t.me")],
-            [InlineKeyboardButton("🧭 Kılavuz (/bilgi)", callback_data=None,
-                                  url="https://t.me")],
-        ])
+        from telegram import ReplyKeyboardMarkup
+        kb = ReplyKeyboardMarkup([
+            ["🎯 Top 5 Hisse", "💰 Portföy Planı"],
+            ["⚙️ Otomatik Tarama", "ℹ️ Bilgi & Yardım"],
+        ], resize_keyboard=True)
         update.message.reply_text(
             "<b>🎯 BIST Trading Bot'a hoş geldiniz!</b>\n\n"
             "<b>Hızlı Başlangıç:</b>\n"
             "• <code>/sorgu GOZDE</code> → tek hisse analizi\n"
             "• <code>/top5</code> → en iyi 5 momentum hissesi\n"
             "• <code>/portfoy</code> → 100.000 TL sermaye planı\n"
-            "• <code>/bilgi</code> → tüm komutlar ve strateji\n\n"
+            "• <code>/bilgi</code> → tüm komutlar ve strateji\n"
+            "• <code>/gunceltop5</code> → arka planda taze Top 5 taraması\n\n"
             "Yarışma dönemi: <b>10 Ağu – 28 Ağu</b> 🗓️",
             reply_markup=kb, parse_mode="HTML",
         )
 
     # --- /bilgi ---
     def cmd_bilgi(update, context):
+        from telegram import ReplyKeyboardMarkup
+        kb = ReplyKeyboardMarkup([
+            ["🎯 Top 5 Hisse", "💰 Portföy Planı"],
+            ["⚙️ Otomatik Tarama", "ℹ️ Bilgi & Yardım"],
+        ], resize_keyboard=True)
         update.message.reply_text(
             "<b>🧭 Kullanım Kılavuzu</b>\n\n"
             "<b>Komutlar:</b>\n"
@@ -691,30 +819,50 @@ def start_bot():
             "   Fiyat, RSI, MACD, EMA, 20G destek/direnç, tüm pivot seviyeleri.\n"
             "• <code>/top5</code> → skorlanmış ilk 5 momentum hissesi (+%6 hedef, -%3 stop).\n"
             "• <code>/portfoy</code> → 100.000 TL'yi 4 eşit pozisyona bölme planı.\n"
-            "• <code>/ototarma ac|kapat</code> → periyodik otomatik tarama uyarıları.\n\n"
+            "• <code>/ototarma ac|kapat</code> → periyodik otomatik tarama uyarıları.\n"
+            "• <code>/gunceltop5</code> → arka planda ilk 5'i tazeler ve sonucu bildirir.\n\n"
             "<b>📈 Strateji (3 hafta — 10-28 Ağu):</b>\n"
             "1) Hacim patlaması + trend (Fiyat>EMA20>EMA50) + RSI 55-72.\n"
             "2) 20 günlük direncin kırılımına yakın hisseleri seç.\n"
             "3) Hedef +%6, sert stop -%3 (R/R ≈ 2:1).\n"
             "4) Her seferinde max 1-2 pozisyon açık tut (sermaye 100.000 TL).",
-            parse_mode="HTML",
+            reply_markup=kb, parse_mode="HTML",
         )
 
     # --- /top5 ---
     def cmd_top5(update, context):
-        msg = "<b>🔥 Top 5 Momentum</b>\n\n"
-        try:
-            top = scan_top_5_stocks()
-        except Exception as e:  # pragma: no cover
-            update.message.reply_text(f"Tarama hatası: {e}")
-            return
+        # Akıllı önbellek: /top5 ASLA canlı tarama başlatmaz -> 0 ms yanıt.
+        # Önce bellek/disk cache'ini döndürür; cache yoksa yönlendirir.
+        top = _get_cached_top5()
         if not top:
-            update.message.reply_text("Kriterlere uyan hisse bulunamadı.")
+            update.message.reply_text(
+                "Henüz bir Top 5 sonucu yok. Arka planda taze tarama için "
+                "<code>/gunceltop5</code> komutuna dokunabilirsiniz.",
+                parse_mode="HTML")
             return
+        msg = "<b>🔥 Top 5 Momentum</b>\n\n"
         for i, a in enumerate(top, 1):
             msg += f"<b>{i}.</b> " + fmt_stock_line(a, show_score=True) + "\n"
         msg += f"\n📊 <b>Kaynak:</b> {top[0].get('data_source', 'Yahoo Finance')}"
+        msg += f"\n🕒 <b>Son Güncelleme:</b> {_last_scan_display_str()}"
+        msg += ("\n🔄 <i>Daha güncel bir Top 5 istiyorsanız /gunceltop5 "
+                "komutuna dokunabilirsiniz.</i>")
         update.message.reply_text(msg, parse_mode="HTML", disable_web_page_preview=True)
+
+
+    def cmd_gunceltop5(update, context):
+        # Asenkron: kullanıcıyı ASLA beklemez; anında bilgi + arka plan taraması.
+        chat_id = update.effective_chat.id
+        update.message.reply_text(
+            "⏳ <b>Taze Top 5 Taraması Başlatıldı!</b>\n\n"
+            "BİST evreninin taranması arka planda devam ediyor. Siz işlerinize "
+            "devam edebilirsiniz; tarama tamamlandığında sizi buradan "
+            "bilgilendireceğim! 🔔",
+            parse_mode="HTML")
+        global _PENDING_GUNCELTOP5
+        with _PENDING_LOCK:
+            _PENDING_GUNCELTOP5.add(chat_id)
+        _ensure_scan_running()
 
     # --- /sorgu ---
     def cmd_sorgu(update, context):
@@ -795,10 +943,40 @@ def start_bot():
     dp.add_handler(CommandHandler("start", cmd_start))
     dp.add_handler(CommandHandler("bilgi", cmd_bilgi))
     dp.add_handler(CommandHandler("top5", cmd_top5))
+    dp.add_handler(CommandHandler("gunceltop5", cmd_gunceltop5))
     dp.add_handler(CommandHandler("sorgu", cmd_sorgu))
     dp.add_handler(CommandHandler("portfoy", cmd_portfoy))
     dp.add_handler(CommandHandler("ototarma", cmd_ototarma))
+
+    # --- ReplyKeyboard buton metinlerini ilgili komuta yönlendir ---
+    def handle_button(update, context):
+        text = (update.message.text or "").strip()
+        btn_map = {
+            "🎯 Top 5 Hisse": cmd_top5,
+            "💰 Portföy Planı": cmd_portfoy,
+            "⚙️ Otomatik Tarama": cmd_ototarma,
+            "ℹ️ Bilgi & Yardım": cmd_bilgi,
+        }
+        fn = btn_map.get(text)
+        if fn:
+            fn(update, context)
+        # tanınmayan text -> sessizce yok say (bildirim verme)
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_button))
     dp.add_handler(MessageHandler(Filters.command, lambda u, c: None))
+
+    # --- Telegram / menüsü: komut + açıklama kaydı (set_my_commands) ------
+    try:
+        BOT.set_my_commands([
+            ("top5", "En iyi 5 momentum hissesi (anında önbellek)"),
+            ("gunceltop5", "Arka planda taze Top 5 taraması başlat"),
+            ("sorgu", "Tek hisse analizi (ör: /sorgu GOZDE)"),
+            ("portfoy", "100.000 TL portföy planı"),
+            ("ototarma", "Otomatik taramayı aç/kapat"),
+            ("bilgi", "Kullanım kılavuzu ve strateji"),
+        ])
+        print("[i] Telegram komut menüsü set_my_commands ile güncellendi.")
+    except Exception as e:  # pragma: no cover
+        print(f"[!] set_my_commands başarısız: {e}")
 
     # --- APScheduler ile periyodik tarama (ototarma abonelerine) -------------
     def auto_scan_job():
@@ -824,12 +1002,29 @@ def start_bot():
         except Exception:
             pass
 
+    # --- Borsa kapanış/açılış ön taraması (diske taze cache yazar) --------
+    def precache_job():
+        # Sunucu yükü sıfır: sabah 09:45 ve akşam 18:30'da BİST kapanışı sonrası
+        # otomatik tarama -> scan_cache.json diske yazılır. Gün içi /top5 ve
+        # /api/scan bu diske 0 ms'de 200 döner (yeniden indirme yok).
+        global _SCAN_CACHE_TS
+        _SCAN_CACHE_TS = 0.0  # önbelleği bayatlat -> taze indirme + diske yaz
+        try:
+            scan_top_5_stocks()
+        except Exception as e:  # pragma: no cover
+            print(f"[!] Ön tarama hatası: {e}")
+
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         # APScheduler 3.x yalnızca pytz timezone objelerini kabul eder
         # (strings desteklenmez) -> Europe/Istanbul açıkça pytz ile verilir.
         SCHEDULER = BackgroundScheduler(timezone=pytz.timezone("Europe/Istanbul"))
         SCHEDULER.add_job(auto_scan_job, "interval", minutes=AUTO_SCAN_INTERVAL_MIN)
+        # Hafta içi 09:45 (açılış öncesi) ve 18:30 (kapanış sonrası) ön-tarama.
+        SCHEDULER.add_job(precache_job, "cron", day_of_week="mon-fri",
+                          hour=9, minute=45, timezone=pytz.timezone("Europe/Istanbul"))
+        SCHEDULER.add_job(precache_job, "cron", day_of_week="mon-fri",
+                          hour=18, minute=30, timezone=pytz.timezone("Europe/Istanbul"))
         SCHEDULER.start()
     except Exception as e:  # pragma: no cover
         print(f"[!] Zamanlayıcı başlatılamadı: {e}")
